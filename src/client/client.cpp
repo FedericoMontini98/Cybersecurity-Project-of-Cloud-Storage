@@ -34,6 +34,10 @@ bool Client::check_password(string username, string password){
     dir = "./users/" + username + "/" + username + "_key.pem";
     FILE* file = fopen(dir.c_str(), "r");
 
+    if (!file){
+        return false;
+    }
+
     EVP_PKEY* privk = PEM_read_PrivateKey(file, NULL, NULL, (void*)password.c_str());
 
     fclose(file);

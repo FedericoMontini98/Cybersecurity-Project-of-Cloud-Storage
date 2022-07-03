@@ -27,20 +27,9 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
     
-    //Check on the username lenght
-    if (username.lenght() > 32 || username.lenght() <= 1){
+    //Check on the username length
+    if (username.length() > 32 || username.length() <= 1){
         cerr << "Username bounds not respected: the username must have a number of character that stays between 2 and 32 char"<<endl;
-        exit(EXIT_FAILURE);
-    }
-
-    //whitelisted chars
-    static char ok_chars[]="abcdefghijklmnopqrstuvwxyz"
-                        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                        "1234567890_-.@";
-
-    //Check for malicious chars using white-listing
-    if(strspn(username, ok_chars) < username.lenght() ){
-        cerr << "Your username include invalid chars, if you're trying to penetrate our system please stop"<<endl;
         exit(EXIT_FAILURE);
     }
 
@@ -52,7 +41,7 @@ int main(int argc, char** argv) {
     }
 
     if (!client.check_password(username, password)){
-        cout << "wrong password" <<endl;
+        cout << "Username does not exists or password is wrong" <<endl;
         exit(EXIT_FAILURE);
     }
 
