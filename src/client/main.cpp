@@ -1,8 +1,7 @@
 #include "client.h"
 
 int main(int argc, char** argv) {
-
-    if (argc < 2) {
+    if (argc != 2) {    
 		cerr << "ERR: no parameter port" << endl;
 		exit(EXIT_FAILURE);
 	}
@@ -21,15 +20,31 @@ int main(int argc, char** argv) {
     Client client = Client(port);
 
     // ask username 
+    cout<<"Insert your username"<<endl;
     string username;
     cin >> username;
     if (!cin){
         exit(EXIT_FAILURE);
     }
+    
+    //Check on the username lenght
+    if (username.lenght() > 32 || username.lenght() <= 1){
+        cerr << "Username bounds not respected: the username must have a number of character that stays between 2 and 32 char"<<endl;
+        exit(EXIT_FAILURE);
+    }
 
-    // USERNAME CHECK IF EXISTS AND TAINTED VALUES
+    //whitelisted chars
+    static char ok_chars[]="abcdefghijklmnopqrstuvwxyz"
+                        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                        "1234567890_-.@";
 
-    // ask password 
+    //Check for malicious chars using white-listing
+    if(strspn(username, ok_chars) < username.lenght() ){
+        cerr << "Your username include invalid chars, if you're trying to penetrate our system please stop"<<endl;
+        exit(EXIT_FAILURE);
+    }
+
+    cout<<"Insert your password"<<endl; 
     string password;
     cin >> password;
     if (!cin){
