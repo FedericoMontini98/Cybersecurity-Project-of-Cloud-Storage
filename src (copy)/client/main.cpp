@@ -20,14 +20,12 @@ int main(int argc, char** argv) {
     // client definition
     Client client = Client(port);
 
-    // ask username 
+    // ask username and maybe check if exists?
     string username;
     cin >> username;
     if (!cin){
         exit(EXIT_FAILURE);
     }
-
-    // USERNAME CHECK IF EXISTS AND TAINTED VALUES
 
     // ask password 
     string password;
