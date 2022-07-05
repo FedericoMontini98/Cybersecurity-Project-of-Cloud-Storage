@@ -16,9 +16,6 @@ int main(int argc, char** argv) {
 		exit(EXIT_FAILURE);
 	}
 
-    // client definition
-    Client client = Client(port);
-
     // ask username 
     cout<<"Insert your username"<<endl;
     string username;
@@ -33,6 +30,9 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
+    // client definition
+    Client client = Client(port);
+
     cout<<"Insert your password"<<endl; 
     string password;
     cin >> password;
@@ -40,10 +40,13 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    if (!client.check_password(username, password)){
+    if (!client.extract_private_key(username, password)){
         cout << "Username does not exists or password is wrong" <<endl;
         exit(EXIT_FAILURE);
     }
+
+    // load openSSL error strings
+    SSL_load_error_strings();
 
     // read input commands and sends it to the server
     client.run();

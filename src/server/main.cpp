@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    cout << "Success: listener set correctly";
+    cout << "Success: listener set correctly" << endl;
 
     // client address structure
     sockaddr_in client_addr;
@@ -47,8 +47,10 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        // start a new thread to handle the communication
+        // start a new thread to handle the communication, 
         thread worker_thread(new_worker_thread, &server, new_socket, client_addr);
+
+        // detach from main thread
 		worker_thread.detach();
     }
 }

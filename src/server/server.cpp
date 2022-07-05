@@ -15,6 +15,11 @@ Server::Server(const uint16_t port){
 	server_addr.sin_addr.s_addr = INADDR_ANY;
 }
 
+// DESTRUCTOR
+Server::~Server(){
+    free(private_key);
+}
+
 // set the socket listener of the server
 bool Server::set_listener(){
 
@@ -29,6 +34,7 @@ bool Server::set_listener(){
         return false;
     }
     
+    // bind and listen
     if (bind(listener_socket, (sockaddr*)&server_addr, sizeof(server_addr)) == -1){
         return false;
     }
@@ -43,7 +49,6 @@ bool Server::set_listener(){
 }
 
 int Server::wait_for_client_connections(sockaddr_in* client_addr){
-    socklen_t addr_length = sizeof(client_addr);
-
-    return accept(listener_socket, (sockaddr*)client_addr, &addr_length);
+    socklen_t addr_len = sizeof(client_addr);
+    return accept(listener_socket, (sockaddr*)client_addr, &addr_len);
 }

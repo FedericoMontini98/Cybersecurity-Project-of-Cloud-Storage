@@ -4,15 +4,18 @@
 #include <iostream>
 #include <thread>
 #include <cstring>
+#include <openssl/ssl.h>
+using namespace std;
 
 // MACROS
 
-#define BACKLOG_QUEUE_SIZE  50
+# define BACKLOG_QUEUE_SIZE  50
 
 class Server {
     int listener_socket = -1;
     sockaddr_in server_addr;
     int port;
+    EVP_PKEY* private_key;
 
     public:
 
@@ -25,15 +28,17 @@ class Server {
 };
 
 class Worker {
-
     Server* server;
     int socket_fd;
     sockaddr_in client_addr;
+    unsigned char* session_key;
+    EVP_PKEY* private_key; //contains a copy of private key of the server
 
     public:
 
     Worker(Server* server, const int socket, const sockaddr_in addr);
     ~Worker();
+    int receive_message();
 
     void run();
 
