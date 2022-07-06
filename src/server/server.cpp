@@ -54,8 +54,6 @@ bool Server::set_listener(){
 
 int Server::wait_for_client_connections(sockaddr_in* client_addr){
     socklen_t addr_len = sizeof(client_addr);
-    int ret = accept(listener_socket, (sockaddr*)client_addr, &addr_len);
-    int tmp = errno;
-    cout << tmp << endl;
-    return ret;
+  
+    return accept(listener_socket, (sockaddr*)client_addr, &addr_len);
 }
