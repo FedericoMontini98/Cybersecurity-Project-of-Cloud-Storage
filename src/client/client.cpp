@@ -1,5 +1,5 @@
 #include "client.h"
-#include "./../errors.h"
+#include "./../common/errors.h"
 
 // CONSTRUCTOR
 Client::Client(const uint16_t _port){
@@ -9,7 +9,7 @@ Client::Client(const uint16_t _port){
 // DESTRUCTOR
 Client::~Client(){
     EVP_PKEY_free(private_key);
-    free(session_key);
+    //free(session_key); //for testing leave this comment when session_key is a constant
 }
 
 // check if password is ok and extract the private key 
@@ -56,7 +56,7 @@ bool Client::send_message(void* msg, const uint32_t len){
         cerr << "Error: message length not sent" << endl;
         return false;
     }
-
+    
     // send message
     ret = send (session_socket, msg, sizeof(msg), 0);
 
@@ -69,7 +69,87 @@ bool Client::send_message(void* msg, const uint32_t len){
     return true;
 }
 
-/*int Client::cbc_encrypt_msg (unsigned char* msg, int msg_len, unsigned char* iv, int iv_len, unsigned char*& ciphertext, 
+// receive a message from socket
+// MISS free
+int Client::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
+    ssize_t ret;
+    uint32_t len; 
+    unsigned char* recv_buffer;
+
+    // receive message length
+    ret = recv(session_socket, &len, sizeof(uint32_t), 0);
+
+    if (DEBUG) {
+        cout << len << endl;
+    }
+
+    if (ret == 0){
+        cerr << "ERR: server disconnected" << endl;
+        return -2;
+    }
+
+    if (ret < 0 || (unsigned long)ret < sizeof(len)){
+        cerr << "ERR: message length received is too short" << endl;
+        return -1;
+    }
+
+    try{
+        // convert len to host format
+        len = ntohl(len);
+
+        // allocate receive buffer
+        
+        if (!DEBUG) {
+            recv_buffer = (unsigned char*) malloc (len);
+        }
+        else {
+            // make the receive buffer printable adding '\0'
+            recv_buffer = (unsigned char*) malloc (len+1);
+        }
+
+        if (!recv_buffer){
+            cerr << "ERR: recv_buffer malloc fail" << endl;
+            throw 1;
+        }
+
+        // receive message
+        ret = recv(session_socket, recv_buffer, len, 0);
+
+        if (ret == 0){
+            cerr << "ERR: client disconnected" << endl;
+            throw 2;
+        }
+
+        if (ret < 0 || (unsigned long)ret < sizeof(len)){
+            cerr << "ERR: message received is too short" << endl;
+            throw 3;
+        }
+    }
+    catch (int error_code){
+
+        free(recv_buffer);
+
+        if (error_code == 2){
+            return -2;
+        }
+        else{
+            return -1;
+        }
+
+    }
+
+    if (DEBUG){
+        recv_buffer[len] = '\0'; 
+        printf("%s\n", recv_buffer);
+    }
+
+    free(recv_buffer);
+
+    return 0;
+}
+
+/* DO NOT DELETE WILL BE USEFUL FOR FILES DOWNLOAD/UPLOAD
+int Client::cbc_encrypt_msg (unsigned char* msg, int msg_len, unsigned char* iv, int iv_len, unsigned char*& ciphertext, 
 int& cipherlen){
     int outlen;
     int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
@@ -176,13 +256,15 @@ unsigned char* Client::generate_iv (const EVP_CIPHER* cipher){
 	
 	int ret = RAND_bytes(iv, iv_len);
 
-    // DEBUG, print IV
-    cout << "iv_len: " << iv_len << endl;
-    cout << "iv: ";
-    for (int i = 0; i<iv_len; i++){
-        std::cout << static_cast<unsigned int>(iv[i]) << std::flush;
+    // DEBUG, print IV 
+    if (DEBUG) {
+        cout << "iv_len: " << iv_len << endl;
+        cout << "iv: ";
+        for (int i = 0; i<iv_len; i++){
+            std::cout << static_cast<unsigned int>(iv[i]) << std::flush;
+        }
+        cout << endl;
     }
-    cout << endl;
 
 	if (ret != 1) {
 		ERR_print_errors_fp(stderr);
@@ -197,6 +279,7 @@ unsigned char* Client::generate_iv (const EVP_CIPHER* cipher){
 
 
 // function to encrypt a fragment of a message, the maximum size of a fragment is set by the file fragments
+// this function will set the iv, ciphertext and cipherlen arguments
 int Client::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, 
 int& cipherlen){
     int outlen;
@@ -282,6 +365,7 @@ int& cipherlen){
 }
 
 // function to decrypt fragments
+// this function will set plaintext and plainlen arguments
 int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, 
 int& plainlen){
     int outlen;
@@ -412,6 +496,108 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len)
     }
 }
 
+// sent packet [username | sts_key_param | hmac_key_param]
+//MISS CONTROLS AND FREES
+int Client::send_login_boostrap(){
+    bootstrap_login_pkt pkt;
+
+    // initialize to 0 the pack
+    memset(&pkt, 0, sizeof(pkt));
+
+    pkt.code = BOOTSTRAP_LOGIN;
+    pkt.sts_key_param = generate_sts_key_param();
+    pkt.hmac_key_param = generate_sts_key_param();
+
+    if (!pkt.hmac_key_param || !pkt.sts_key_param){
+        cerr << "ERR: failed to generate session keys parameters" << endl;
+        return false;
+    }
+
+    if (!send_message(&pkt, sizeof(bootstrap_login_pkt))){
+        cerr << "ERR: failed to send login bootstrap packet" << endl;
+        return -1;
+    }
+
+    if (receive_message() < 0){
+        cerr << "ERR: some error in receiving bootstrap login response occurred" << endl;
+        return -1;
+    }
+
+    // handle response
+
+    // if all is ok save the 2 parameters on the class field
+
+    return 0;
+    
+}
+
+// generate the sts key parameter g**a (diffie-hellman) for the session key establishment
+EVP_PKEY* Client::generate_sts_key_param(){
+    EVP_PKEY* dh_params = nullptr;
+    EVP_PKEY_CTX* dh_gen_ctx = nullptr;
+    EVP_PKEY* dh_key = nullptr;
+    int ret;
+
+    try{
+        // Allocate p and g
+        dh_params = EVP_PKEY_new();
+        if (!dh_params){
+            cerr << "ERR: fail to generate new dh params" << endl;
+            throw 0;
+        }
+
+        // set default dh parameters for p and g
+        DH* default_params = DH_get_2048_224();
+        ret = EVP_PKEY_set1_DH(dh_params, default_params);
+        
+        // no longer need of this variable
+        DH_free(default_params);
+
+        if (ret != 1) {
+            cerr << "ERR: failed to load default params" << endl;
+            throw 1;
+        }
+
+        // g^a or g^b
+        dh_gen_ctx = EVP_PKEY_CTX_new(dh_params, nullptr);
+		if (!dh_gen_ctx) {
+            cerr << "ERR: failed to load define dh context" << endl;
+            throw 2;
+        }
+
+        ret = EVP_PKEY_keygen_init(dh_gen_ctx);
+		if (ret != 1) {
+            cerr << "ERR: failed dh keygen init" << endl;
+            throw 3;
+        }
+
+		ret = EVP_PKEY_keygen(dh_gen_ctx, &dh_key);
+		if (ret != 1){ 
+            cerr << "ERR: failed dh keygen" << endl;
+            throw 4;
+        }
+        EVP_PKEY* sts_key_param = generate_sts_key_param();
+    }
+    catch (int error_code){
+
+        if (error_code > 0){
+            EVP_PKEY_free(dh_params);
+        }
+        
+        if (error_code > 1) {
+            EVP_PKEY_CTX_free(dh_gen_ctx);
+        }
+
+        return nullptr;
+    }
+
+    EVP_PKEY_CTX_free(dh_gen_ctx);
+	EVP_PKEY_free(dh_params);
+
+    return dh_key;
+
+}
+
 
 // initialize session socket
 bool Client::init_socket(){
@@ -429,20 +615,29 @@ bool Client::init_socket(){
 	return true;
 }
 
-bool Client::initialize_session(){
+bool Client::init_session(){
+    int ret;
     
+    // initialize socket
     if (!init_socket()){
+        cerr << " Error: socket definition failed" << endl;
         return false;
     }
 
     // connect to server
-    int ret = connect(session_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    ret = connect(session_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
 	if (ret < 0) {
-		cerr << "Error: connect to server failed" << endl;
+		cerr << "Error: connection to server failed" << endl;
 		return false;
 	}
 
+    // send login bootstrap packet
+    if (send_login_boostrap() < 0){
+        cerr << "something goes wrong in sending login bootstrap packet" << endl;
+        return false;
+    }
 
+    return true;
 }
 
 // RUN
@@ -450,7 +645,7 @@ void Client::run(){
     cout << "RUN" <<endl;
 
     // establish session and HMAC key
-    if(!initialize_session()){
+    if(!init_session()){
         cerr << "Session keys establishment failed" << endl;
         throw INITIALIZE_SESSION_FAIL;
     }
@@ -483,3 +678,23 @@ void Client::run(){
 
     printf("%s\n", pt);
 }*/
+
+// TEST socket
+
+/*void Client::run(){
+    cout << "RUN" <<endl;
+
+    // establish session and HMAC key
+    if(!initialize_session()){
+        cerr << "Session keys establishment failed" << endl;
+        throw INITIALIZE_SESSION_FAIL;
+    }
+
+    unsigned char* send_buffer = (unsigned char*) malloc(5);
+    memset(send_buffer, 'A', 5);
+    send_message((void *)send_buffer, 5);
+
+    recv (session_socket, send_buffer, 5, 0);
+  
+}*/
+

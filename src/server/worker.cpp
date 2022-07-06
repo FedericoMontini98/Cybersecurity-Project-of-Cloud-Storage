@@ -11,6 +11,8 @@ Worker::~Worker(){
     EVP_PKEY_free(private_key);
 }
 
+// receive message from socket
+// MISS free
 int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
     ssize_t ret;
     uint32_t len; 
@@ -18,6 +20,10 @@ int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
 
     // receive message length
     ret = recv(socket_fd, &len, sizeof(uint32_t), 0);
+
+    if (DEBUG) {
+        cout << len << endl;
+    }
 
     if (ret == 0){
         cerr << "ERR: client disconnected" << endl;
@@ -34,7 +40,14 @@ int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
         len = ntohl(len);
 
         // allocate receive buffer
-        recv_buffer = (unsigned char*) malloc (len);
+        
+        if (!DEBUG) {
+            recv_buffer = (unsigned char*) malloc (len);
+        }
+        else {
+            // make the receive buffer printable adding '\0'
+            recv_buffer = (unsigned char*) malloc (len+1);
+        }
 
         if (!recv_buffer){
             cerr << "ERR: recv_buffer malloc fail" << endl;
@@ -67,8 +80,15 @@ int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
 
     }
 
-    recv_buffer[len] = '\0'; //REMOVE
-    printf("%s", recv_buffer);
+    if (DEBUG){
+        recv_buffer[len] = '\0'; 
+        printf("%s\n", recv_buffer);
+    }
+
+    // handle command
+    handle_command(recv_buffer);
+    free(recv_buffer);
+
     return 0;
 }
 

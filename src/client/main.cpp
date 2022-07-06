@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
     }
     
     //Check on the username length
-    if (username.length() > 32 || username.length() <= 1){
+    if (username.length() > MAX_USERNAME_LENGTH || username.length() <= MIN_USERNAME_LENGTH){
         cerr << "Username bounds not respected: the username must have a number of character that stays between 2 and 32 char"<<endl;
         exit(EXIT_FAILURE);
     }
