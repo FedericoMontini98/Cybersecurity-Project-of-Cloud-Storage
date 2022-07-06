@@ -415,6 +415,7 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len)
 
 // initialize session socket
 bool Client::init_socket(){
+    // ipv4 + tcp
     session_socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (session_socket < 0) {
 		cerr << "Error: socket creation failed" << endl;

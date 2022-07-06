@@ -1,15 +1,17 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <stdlib.h>
 #include <iostream>
 #include <thread>
 #include <cstring>
 #include <openssl/ssl.h>
+
 using namespace std;
 
 // MACROS
 
-# define BACKLOG_QUEUE_SIZE  50
+# define BACKLOG_QUEUE_SIZE  10
 
 class Server {
     int listener_socket = -1;

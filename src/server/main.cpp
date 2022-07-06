@@ -28,8 +28,7 @@ int main(int argc, char** argv) {
     Server server = Server(port);
 
     // set listener
-    if (server.set_listener()){
-        cout << "Failure: listener cannot be set";
+    if (!server.set_listener()){
         exit(EXIT_FAILURE);
     }
 
