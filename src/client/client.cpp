@@ -8,8 +8,12 @@ Client::Client(const uint16_t _port){
 
 // DESTRUCTOR
 Client::~Client(){
+
+    // if keys are nullptr frees do nothing
     EVP_PKEY_free(private_key);
-    //free(session_key); //for testing leave this comment when session_key is a constant
+    //free(symmetric_key); //for testing leave this comment when symmetric_key is a constant
+    free(hmac_key);      
+    free(iv);
 }
 
 // check if password is ok and extract the private key 
@@ -43,7 +47,7 @@ bool Client::extract_private_key(string _username, string password){
     return true;
 }
 
-// send a message through socket
+// send a message through socket and free msg
 bool Client::send_message(void* msg, const uint32_t len){
     
     ssize_t ret;
@@ -70,11 +74,11 @@ bool Client::send_message(void* msg, const uint32_t len){
 }
 
 // receive a message from socket
-// MISS free
+// DO NOT HANDLE FREE
 int Client::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
     ssize_t ret;
     uint32_t len; 
-    unsigned char* recv_buffer;
+    unsigned char* recv_buffer; // maybe this could be a field of the class and allocated one time with size 4096 and freed one time
 
     // receive message length
     ret = recv(session_socket, &len, sizeof(uint32_t), 0);
@@ -140,10 +144,8 @@ int Client::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
 
     if (DEBUG){
         recv_buffer[len] = '\0'; 
-        printf("%s\n", recv_buffer);
+        printf("received message: %s\n", recv_buffer);
     }
-
-    free(recv_buffer);
 
     return 0;
 }
@@ -244,6 +246,8 @@ int& cipherlen){
     EVP_EncryptInit(ctx, EVP_aes_128_cbc(), &session_key, NULL);
 }*/
 
+// generate a new iv for the specified cipher
+// DO NOT HANDLE FREE
 unsigned char* Client::generate_iv (const EVP_CIPHER* cipher){
     int iv_len = EVP_CIPHER_iv_length(cipher);
 
@@ -256,6 +260,14 @@ unsigned char* Client::generate_iv (const EVP_CIPHER* cipher){
 	
 	int ret = RAND_bytes(iv, iv_len);
 
+	if (ret != 1) {
+		ERR_print_errors_fp(stderr);
+
+        // must free the iv
+		free(iv);
+		return nullptr;
+	}
+
     // DEBUG, print IV 
     if (DEBUG) {
         cout << "iv_len: " << iv_len << endl;
@@ -266,20 +278,13 @@ unsigned char* Client::generate_iv (const EVP_CIPHER* cipher){
         cout << endl;
     }
 
-	if (ret != 1) {
-		ERR_print_errors_fp(stderr);
-
-        // must free the iv
-		free(iv);
-		return nullptr;
-	}
-
 	return iv;
 }
 
 
 // function to encrypt a fragment of a message, the maximum size of a fragment is set by the file fragments
 // this function will set the iv, ciphertext and cipherlen arguments
+// HANDLE FREE ONLY ON ERROR
 int Client::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, 
 int& cipherlen){
     int outlen;
@@ -312,7 +317,7 @@ int& cipherlen){
         iv = generate_iv(EVP_aes_128_cbc()); //REMOVE IV_LEN
 
         // init encryption
-        ret = EVP_EncryptInit(ctx, EVP_aes_128_cbc(), session_key, iv);
+        ret = EVP_EncryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
 		if (ret != 1) {
 			cerr << "failed to initialize encryption" << endl;
 			ERR_print_errors_fp(stderr);
@@ -359,6 +364,8 @@ int& cipherlen){
         if (error_code > 2){
             free(iv);
         }
+
+        return -1;
     }
 
     return 0;
@@ -400,7 +407,7 @@ int& plainlen){
         }
 
         // init encryption
-        ret = EVP_DecryptInit(ctx, EVP_aes_128_cbc(), session_key, iv);
+        ret = EVP_DecryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
 		if (ret != 1) {
 			cerr << "ERR: failed to initialize decryption" << endl;
 			ERR_print_errors_fp(stderr);
@@ -490,7 +497,7 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len)
             return -1;
         }
 
-        // gcm_encrypt fragment then send with socket
+        // cbc_encrypt fragment then send with socket
 
         free(buffer);
     }
@@ -645,10 +652,18 @@ bool Client::init_session(){
 void Client::run(){
     cout << "RUN" <<endl;
 
-    // establish session and HMAC key
-    if(!init_session()){
-        cerr << "Session keys establishment failed" << endl;
-        throw INITIALIZE_SESSION_FAIL;
+    try {
+
+        // establish session and HMAC key
+        if(!init_session()){
+            cerr << "Session keys establishment failed" << endl;
+            throw 1;
+        }
+
+        cout << "session keys has been established correctly " << endl;
+    }
+    catch (int error_code) {
+
     }
 }
 

@@ -17,18 +17,23 @@
 # define FILENAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-."
 # define FILE_FRAGMENTS_SIZE 4096
 
+// MAYBE ADD SEND AND RECV BUFFER
 class Client{
     int session_socket = -1;
     int port;
-    const string server_ip = "127.0.0.1";
+    const string server_ip = "127.0.0.1"; 
     sockaddr_in server_addr;
     string username;
 
+    /* must be freed */
+    // when a new iv is generated this variable must be freed
+    unsigned char* iv = nullptr;
+
     // keys
-    EVP_PKEY* private_key; /*must be freed*/
-    unsigned char* session_key = (unsigned char*) "0123456789012345";
-    EVP_PKEY* dh_key;
-    unsigned char* hmac_key;
+    /* must be freed */
+    EVP_PKEY* private_key = nullptr; 
+    unsigned char* symmetric_key = (unsigned char*) "0123456789012345"; //EDIT set to nullptr
+    unsigned char* hmac_key = nullptr;
 
     public:
     Client(const uint16_t _port);

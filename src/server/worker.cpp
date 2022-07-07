@@ -7,12 +7,15 @@ Worker::Worker (Server* server, const int socket, const sockaddr_in addr){
 }
 
 Worker::~Worker(){
-    free(session_key);
+    // if keys are nullptr frees do nothing
     EVP_PKEY_free(private_key);
+    //free(symmetric_key); //for testing leave this comment when symmetric_key is a constant
+    free(hmac_key);      
+    free(iv);
 }
 
 // receive message from socket
-// MISS free
+// MAYBE DEFINE A RECV_BUFFER IN CLASS
 int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
     ssize_t ret;
     uint32_t len; 
@@ -87,6 +90,8 @@ int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
 
     // handle command
     handle_command(recv_buffer);
+
+    // the content of the buffer is not needed anymore, DELETE IF BUFFER IS DEFINED IN CLASS
     free(recv_buffer);
 
     return 0;

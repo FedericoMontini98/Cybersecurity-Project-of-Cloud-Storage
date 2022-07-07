@@ -13,7 +13,7 @@ class Server {
     int listener_socket = -1;
     sockaddr_in server_addr;
     int port;
-    EVP_PKEY* private_key;
+    EVP_PKEY* private_key = nullptr;
 
     public:
 
@@ -25,12 +25,21 @@ class Server {
 
 };
 
+// MAYBE ADD SEND AND RECV BUFFER
 class Worker {
     Server* server;
     int socket_fd;
     sockaddr_in client_addr;
-    unsigned char* session_key;
-    EVP_PKEY* private_key; //contains a copy of private key of the server
+
+    /* must be freed */
+    // when a new iv is generated this variable must be freed
+    unsigned char* iv = nullptr;
+
+    // keys
+    /* must be freed */
+    EVP_PKEY* private_key = nullptr; // contain a copy of the private_key of the server
+    unsigned char* symmetric_key = (unsigned char*) "0123456789012345"; //EDIT set to nullptr
+    unsigned char* hmac_key = nullptr;
 
     public:
 
