@@ -1,6 +1,6 @@
 #include "server.h"
 
-int Worker::handle_command(unsigned char* cmd){
+int Worker::handle_command(unsigned char* cmd) {
     const char* ptr;
     int code;
 

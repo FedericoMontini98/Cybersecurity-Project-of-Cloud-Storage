@@ -4,9 +4,9 @@ CFLAGS = -c -Wall
 
 all: server.exe
 
-server.exe: main.o server.o worker.o
+server.exe: main.o server.o worker.o command_handler.o
 
-	$(CC) main.o server.o worker.o $(LFLAGS) -o server.exe 
+	$(CC) main.o server.o worker.o command_handler.o $(LFLAGS) -o server.exe 
 
 server.o: server.cpp
 
@@ -15,6 +15,10 @@ server.o: server.cpp
 worker.o: worker.cpp
 
 	$(CC) $(CFLAGS) worker.cpp
+
+command_handler.o: command_handler.cpp
+
+	$(CC) $(CFLAGS) command_handler.cpp
 
 main.o: main.cpp
 

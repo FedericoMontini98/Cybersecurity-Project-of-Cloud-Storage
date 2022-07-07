@@ -518,11 +518,6 @@ int Client::send_login_boostrap(){
         return -1;
     }
 
-    if (receive_message() < 0){
-        cerr << "ERR: some error in receiving bootstrap login response occurred" << endl;
-        return -1;
-    }
-
     // handle response
 
     // if all is ok save the 2 parameters on the class field
@@ -635,6 +630,12 @@ bool Client::init_session(){
     if (send_login_boostrap() < 0){
         cerr << "something goes wrong in sending login bootstrap packet" << endl;
         return false;
+    }
+
+    // receive response
+    if (receive_message() < 0){
+        cerr << "ERR: some error in receiving bootstrap login response occurred" << endl;
+        return -1;
     }
 
     return true;

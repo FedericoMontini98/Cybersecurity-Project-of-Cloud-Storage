@@ -17,3 +17,4 @@ struct bootstrap_login_pkt {
     EVP_PKEY* sts_key_param;
     EVP_PKEY* hmac_key_param;
 };
+
