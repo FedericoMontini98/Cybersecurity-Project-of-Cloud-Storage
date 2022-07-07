@@ -18,4 +18,4 @@ main.o: main.cpp
 	$(CC) $(CFLAGS) main.cpp
 
 clean:
-	rm *.o client
+	rm *.o client.exe
