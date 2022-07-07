@@ -2,8 +2,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <thread>
+#include <cstring>
 #include <openssl/ssl.h>
-#include <communication_packets.h>
+#include <./../common/communication_packets.h>
 
 # define DEBUG true
 # define BACKLOG_QUEUE_SIZE  10
