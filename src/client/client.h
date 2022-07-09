@@ -49,6 +49,7 @@ class Client{
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
     int send_encrypted_file (string filename, unsigned char* iv, int iv_len);
     EVP_PKEY* generate_sts_key_param();
+    void help();
 
     // packets methods
     int send_login_boostrap();

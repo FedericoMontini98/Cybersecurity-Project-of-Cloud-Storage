@@ -648,6 +648,20 @@ bool Client::init_session(){
     return true;
 }
 
+//Help function that shows all the available commands to the user
+void help(){
+    cout<<"===================================== HELP ================================================="<<endl<<endl;
+    cout<<"The available commands are the following:"<<endl;
+    cout<<"help                         : that shows all the available commands"<<endl;
+    cout<<"download fileName           : Specifies a file on the server machine. The server sends the requested file to the user.\nThe filename of any downloaded file must be the filename used to store the file on the server.\nIf this is not possible, the file is not downloaded."<<endl<<endl;
+    cout<<"delete fileName             : Specifies a file on the server machine. The server asks the user for confirmation.\nIf the user confirms, the file is deleted from the server. "<<endl<<endl;
+    cout<<"upload fileName             : Specifies a filename on the client machine and sends it to the server. \nThe server saves the uploaded file with the filename specified by the user.\nIf this is not possible, the file is not uploaded. The max file size is 4GiB"<<endl<<endl;
+    cout<<"list                         : The client asks to the server the list of the filenames of the available files in his dedicated storage.\n The client prints to screen the list."<<endl<<endl;
+    cout<<"rename fileName newName    : Specifies a file on the server machine. Within the request, the clients sends the new filename. \nIf the renaming operation is not possible, the filename is not changed."<<endl<<endl;
+    cout<<"logout                       : The client gracefully closes the connection with the server. "<<endl;
+    cout<<"============================================================================================"<<endl<<endl;
+}
+
 // RUN
 void Client::run(){
     cout << "RUN" <<endl;
@@ -664,6 +678,102 @@ void Client::run(){
     }
     catch (int error_code) {
 
+    }
+
+    //Non so se ci va altro qua
+
+    cout<<"======================================="<<endl;
+	cout<<"=            CLIENT AVVIATO           ="<<endl;
+	cout<<"======================================="<<endl;
+
+    help();
+
+    while(true){
+        string command;
+        cout<<"-> Insert a command:"<<endl;
+        getline(cin,command);
+
+        //Command whitelisting check
+        if (command.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
+        {
+            std::cerr << "ERR: command check on whitelist fails"<<endl;
+            return false;
+        }
+
+        //Command parsing to extract comand and the arguments
+        vector<string> words{};
+        string space_delimiter = " ";
+        size_t pos = 0;
+        while ((pos = text.find(space_delimiter)) != string::npos) {
+            //Push the word inside the vector
+            words.push_back(text.substr(0, pos));
+            //delete the pushed word from the string
+            text.erase(0, pos + space_delimiter.length());
+        }
+        //Check the parsing
+        if(DEBUG){
+            for (const auto &str : words) {
+                cout << str << endl;
+            }
+        }
+
+        if(words.size()>2){
+            cout<<"Too many arguments, try again"<<endl;
+            continue;
+        }
+        //Check for command existance
+        state = -1;
+        if(strcmp(words[0],"help")){
+            state = 0;
+        }
+        if(strcmp(words[0],"upload")){
+            state = 1;
+        }
+        if(strcmp(words[0],"download")){
+            state = 2;
+        }
+        if(strcmp(words[0],"list")){
+            state = 3;
+        }
+        if(strcmp(words[0],"rename")){
+            state = 4;
+        }
+        if(strcmp(words[0],"delete")){
+            state = 5;
+        }
+        if(strcmp(words[0],"logout")){
+            state = 6;
+        }
+        else{
+            state = 7;
+        }
+        switch(state){
+            case 0:
+                help();
+            
+            case 1:
+                //upload(words[1]);
+
+            case 2:
+                //download(words[1]);
+
+            case 3:
+                //list();
+
+            case 4:
+                //rename(words[1],words[2]);
+
+            case 5:
+                //delete(words[1]);
+
+            case 6:
+                //logout();
+
+            case 7:
+                cout<<"Wrong command, check and try again"<<endl;
+                continue;
+
+        }
     }
 }
 
