@@ -252,14 +252,16 @@ int& cipherlen){
 
 // generate a new iv for the specified cipher
 // DO NOT HANDLE FREE
-unsigned char* Client::generate_iv (const EVP_CIPHER* cipher){
+bool Client::generate_iv (const EVP_CIPHER* cipher){
     int iv_len = EVP_CIPHER_iv_length(cipher);
 
-	unsigned char* iv = (unsigned char*)malloc(iv_len);
+    free(iv);
+    iv = (unsigned char*) malloc(iv_len);
 
 	if (!iv) {
 		cerr << "ERR: failed to allocate iv" << endl;
-		return nullptr;
+        iv = nullptr;
+		return false;
 	}
 	
 	int ret = RAND_bytes(iv, iv_len);
@@ -269,7 +271,8 @@ unsigned char* Client::generate_iv (const EVP_CIPHER* cipher){
 
         // must free the iv
 		free(iv);
-		return nullptr;
+        iv = nullptr;
+		return false;
 	}
 
     // DEBUG, print IV 
@@ -282,7 +285,7 @@ unsigned char* Client::generate_iv (const EVP_CIPHER* cipher){
         cout << endl;
     }
 
-	return iv;
+    return true;
 }
 
 
@@ -313,19 +316,22 @@ int& cipherlen){
         // context definition
         ctx = EVP_CIPHER_CTX_new();
         if (!ctx) {
-            cerr << "context definition failed";
+            cerr << "context definition failed" << endl;
             throw 2;
         }
 
         //iv generation
-        iv = generate_iv(EVP_aes_128_cbc()); //REMOVE IV_LEN
+        if (!generate_iv(EVP_aes_128_cbc())){
+            cerr << "failed to generate iv" << endl;
+            throw 3;
+        } 
 
         // init encryption
         ret = EVP_EncryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
 		if (ret != 1) {
 			cerr << "failed to initialize encryption" << endl;
 			ERR_print_errors_fp(stderr);
-			throw 3;
+			throw 4;
 		}
 
         outlen = 0;
@@ -336,7 +342,7 @@ int& cipherlen){
 
         if (ret != 1) {
                 ERR_print_errors_fp(stderr);
-                throw 4;
+                throw 5;
         }
 
         cipherlen += outlen;
@@ -345,13 +351,13 @@ int& cipherlen){
 
 		if (ret != 1) {
 			ERR_print_errors_fp(stderr);
-			throw 5;
+			throw 6;
 		}
 
         // extra check on the cipherlen overflow
         if (cipherlen > numeric_limits<int>::max() - outlen) {
             cerr << "overflow error on cipherlen" << endl;
-            throw 6;
+            throw 7;
         }
 
         cipherlen += outlen;
@@ -365,7 +371,7 @@ int& cipherlen){
             EVP_CIPHER_CTX_free(ctx);
         }
 
-        if (error_code > 2){
+        if (error_code > 3){
             free(iv);
         }
 

@@ -46,7 +46,7 @@ class Client{
     bool init_socket();
     bool send_message(void* msg, const uint32_t len);
     int receive_message();
-    unsigned char* generate_iv (const EVP_CIPHER* cipher);
+    bool generate_iv (const EVP_CIPHER* cipher);
     int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
     int send_encrypted_file (string filename, unsigned char* iv, int iv_len);
