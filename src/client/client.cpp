@@ -472,7 +472,7 @@ int& plainlen){
 }
 
 // encrypt using cbc_encrypt but for pieces of file
-int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len){
+int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint64_t& counter){
     unsigned char* buffer;
 
     // check filename on whitelist
@@ -507,10 +507,31 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len)
             return -1;
         }
 
-        // cbc_encrypt fragment then send with socket
+        unsigned char* ct;
+        uintmax_t len_ct;
 
+        file_upload pkt;
+        pkt.code = FILE_UPLOAD;
+        pkt.msg = buffer;
+        pkt.counter = counter;
+
+        buffer = pkt.serialize_message();
+
+        cbc_encrypt_fragment(&buffer, ret, this->iv, &ct, &len_ct);
+
+        if(!send_message((void*)ciphertext, cipherlen)){
+            cout<<"Error: send of a fragment failed"<<endl;
+            return -1;
+        }   
+
+        //HMAC SEND TODO
+
+        counter++;
+        free(ct);
         free(buffer);
     }
+
+    return 0;
 }
 
 // sent packet [username | sts_key_param | hmac_key_param]
@@ -658,7 +679,10 @@ bool Client::init_session(){
     return true;
 }
 
-//Check the existance of the file inside the upload directory
+/**Check the existance of the file inside the upload directory
+ *  @filename : file of which we have to check the existance
+ *  @username : needed to find the current user directory 
+ */
 bool file_exists(string filename, string username){
     string path = UPLOAD_PATH + username + "/Upload/" + filename;
     ifstream file(path);
@@ -666,16 +690,19 @@ bool file_exists(string filename, string username){
         cout << "File not found" << endl;
         return false;
     }
+
     uintmax_t size = filesystem::file_size(path);   //uintmax_t is on 64 bits, overflow must be avoided
-    if( size - 4000000000 > 0){
+    if( size - FILE_MAX_SIZE > 0){
         cout<< "File too big" <<endl;
         return false;
     }
+
     //The file exists and has a size which is less then 4Gib
     return true;
 }
 
-//Help function that shows all the available commands to the user
+/** Help function that shows all the available commands to the user
+ */
 void help(){
     cout<<"===================================== HELP ================================================="<<endl<<endl;
     cout<<"The available commands are the following:"<<endl;
@@ -689,7 +716,10 @@ void help(){
     cout<<"============================================================================================"<<endl<<endl;
 }
 
-//Function that manage the upload command, takes as a parameter the name of the file that the user want to upload. The file must be located in a specific directory.
+/**Function that manage the upload command, takes as a parameter the name of the file that the user want to upload. The file must be located in a specific directory.
+ *  @filename : name of the file that the user wants to upload 
+ *  @username : the username used to log in
+ */
 void upload(string filename, string username){
     uint32_t counter = 0;
     //filename is a string composed from whitelisted chars, so no path traversal allowed (see the cycle at 724)
@@ -702,30 +732,162 @@ void upload(string filename, string username){
 
     //Check if on server side there is a file with the same name
     //Packet initialization
-    upload_filename_exist pkt;
+    bootstrap_upload pkt;
     memset(&pkt,0,sizeof(pkt));
     pkt.code = BOOTSTRAP_UPLOAD;
-    pkt.filename = htons(filename);
+    pkt.filename = filename;
     pkt.response = false;
     pkt.counter = counter;
+    ifstream in_file("a.txt", ios::binary);
+    in_file.seekg(0, ios::end);
+   int file_size = in_file.tellg();
+
+    unsigned char* buffer;
 
     //Serialization of the data-structure
-    pkt.serialize_message();    //TODO
+    buffer = pkt.serialize_message();    //TODO
 
-    unsigned char* iv;
+    unsigned char* iv = this->iv;
     unsigned char* ciphertext;
     int cipherlen;
+
+    /******************************************************/
+    /******* Phase 1: send iv + encrypt_msg + HMAC ********/
+
     //Message encryption
-    int ret=cbc_encrypt_fragment(buffer, buffer.length(), &iv, &ciphertext, &cipherlen)
+    int ret=cbc_encrypt_fragment(buffer, buffer.size(), &iv, &ciphertext, &cipherlen)
     if(ret!=0){
         cout<<"Error during encryption"<<endl;
     }
-    
-    send_message((void *)ciphertext, cipherlen);
 
-    free(iv);
+    //Send the iv
+    if(!send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()))){
+        cout<<"Error during send #1"<<endl;
+        return;
+    }
+
+    //send the cyphertext
+    if(!send_message((void*)ciphertext, cipherlen)){
+        cout<<"Error during send #2"<<endl;
+    }
+
+    //Generation of the HMAC
+    //generate_HMAC()
+    //send the HMAC
+    //if(!send_message((void*)hmac, /*hmacsize*/)){
+    //  cout<<"Error during send #3"<<endl;
+    //  return;
+    //}
+
+    counter++;
+
+    /******************************************************/
+    /******** Phase 2: receive encrypt_msg + HMAC *********/
+
+    //receive the encrypted message
+    ret = receive_message(&cyphertext);
+    if(ret!=0){
+        cout<<"Error during a receive"<<endl;
+        return;
+    }
+    //Get the cyphertext received size
+    uint64_t size_pt;
+    uint64_t size_ct = strlen((char*)cyphertext);
+
+    //Cyphertext decryption with session key
+    if (cbc_decrypt_fragment(cyphertext,size, iv, &buffer, &size_pt) != 0){
+        cout << "Error during decryption" << endl;
+        return;
+    }
+
+    //receive the encrypted message
+    ret = receive_message(&HMAC);
+    if(ret!=0){
+        cout<<"Error during the communication with the server"<<endl;
+        return;
+    }
+
+    //TODO 
+    //CHECK HMAC VALIDITY
+    /*if(!check_HMAC(HMAC,cyphertext, iv, counter)){
+        cout<<"received HMAC not valid"<<endl;
+        return;
+    }
+    */
+
+    pkt.deserialize_message(buffer);    //TODO
+
+    if(pkt->response == false){
+        cout<<"A file with this name is already in the cloud, rename it locally and try again"<<endl;
+        return;
+    }
+
+    counter++;
+
+    /******************************************************/
+    /************* Phase 3: send file chunks **************/
+
+    if(send_encrypted_file (filename, iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()),&counter)!=0){
+        cout << "Error during phase 3 of the upload" << endl;
+        return;
+    }
+
+    /******************************************************/
+    /*********** Phase 4: send completion msg *************/
+
+
+
+    /******************************************************/
+    /*********** Phase 5: send completion msg *************/
+
+    //Free the allocated space
     free(cyphertext);
+    free(buffer);
+}
 
+/**Function that manage the downlaod command, takes as a parameter the name of the file that the user want to download.
+ *  @filename : name of the file that the user wants to download 
+ *  @username : the username used to log in
+ */
+void download(string filename){
+    uint32_t counter = 0;
+
+    //Check if on server side there is a file with the same name
+    //Packet initialization
+    upload_filename_exist pkt;
+    memset(&pkt,0,sizeof(pkt));
+    pkt.code = BOOTSTRAP_DOWNLOAD;
+    pkt.filename = filename;
+    pkt.response = false;
+    pkt.counter = counter;
+
+    unsigned char* buffer;
+
+    //Serialization of the data-structure
+    buffer = pkt.serialize_message();    //TODO
+
+    unsigned char* iv = this->iv;
+    unsigned char* ciphertext = ;
+    int cipherlen;
+
+    //Message encryption
+    int ret=cbc_encrypt_fragment(buffer, buffer.size(), &iv, &ciphertext, &cipherlen)
+    if(ret!=0){
+        cout<<"Error during encryption"<<endl;
+    }
+    //Send the iv
+    send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+
+    //send the cyphertext
+    send_message((void*)ciphertext, cipherlen);
+
+    //Generation of the HMAC
+
+    // ??
+
+    //send_message((void*)hmac, /*hmacsize*/)
+
+    ret = receive_message()
 }
 
 // RUN
@@ -820,7 +982,7 @@ void Client::run(){
                 upload(words[1],this->username);
 
             case 2:
-                //download(words[1]);
+                download(words[1]);
 
             case 3:
                 //list();
