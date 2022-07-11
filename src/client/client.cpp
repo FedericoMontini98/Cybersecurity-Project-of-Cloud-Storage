@@ -7,6 +7,7 @@
 // CONSTRUCTOR
 Client::Client(const uint16_t _port){
     port = _port;
+    iv = malloc(EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
 }
 
 // DESTRUCTOR
@@ -702,22 +703,22 @@ void upload(string filename, string username){
     pkt.response = false;
     pkt.counter = counter;
 
-    //Serialization of the data-structure Call FABLAN FUNCTION 
-    //TODO
-    string buffer = "";
-    buffer = pkt.code + " " + pkt.filename + " " pkt.response + " " + pkt.counter;
-    //END
+    //Serialization of the data-structure
+    pkt.serialize_message();    //TODO
 
     unsigned char* iv;
     unsigned char* ciphertext;
     int cipherlen;
     //Message encryption
-    int ret=cbc_encrypt_fragment (buffer, buffer.length(), &iv, &ciphertext, &cipherlen)
+    int ret=cbc_encrypt_fragment(buffer, buffer.length(), &iv, &ciphertext, &cipherlen)
     if(ret!=0){
         cout<<"Error during encryption"<<endl;
     }
     
     send_message((void *)ciphertext, cipherlen);
+
+    free(iv);
+    free(cyphertext);
 
 }
 
