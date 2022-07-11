@@ -79,10 +79,9 @@ bool Client::send_message(void* msg, const uint32_t len){
 
 // receive a message from socket
 // DO NOT HANDLE FREE
-int Client::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
+int Client::receive_message(unsigned char&* recv_buffer){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
     ssize_t ret;
     uint32_t len; 
-    unsigned char* recv_buffer; // maybe this could be a field of the class and allocated one time with size 4096 and freed one time
 
     // receive message length
     ret = recv(session_socket, &len, sizeof(uint32_t), 0);
@@ -543,6 +542,71 @@ int Client::send_login_boostrap(){
     
 }
 
+
+
+// generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
+int Client::generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, unsigned char*& digest, int*& digestlen){
+    int ret;
+
+    if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
+        cerr << "message length is not allowed" << endl;
+        return -1;
+    }
+
+    try{
+        digest = (unsigned char*) malloc(EVP_MD_size(hmac_type));
+        if (!digest){
+            cerr << "malloc of digest failed" << endl;
+            throw 1;
+        }
+
+        ctx = EVP_MD_CTX_new();
+
+        if (!ctx){
+            cerr << "context definition failed" << endl;
+            throw 2;
+        }
+
+        ret = EVP_DigestInit(ctx, hmac_type);
+
+        if (ret != 1) {
+			cerr << "failed to initialize digest creation" << endl;
+			ERR_print_errors_fp(stderr);
+			throw 3;
+		}
+
+        ret = EVP_DigestUpdate(ctx, (unsigned char*)msg, sizeof(msg)); //try or put it in input function
+
+        if (ret != 1) {
+            cerr << "failed to update digest " << endl;
+			ERR_print_errors_fp(stderr);
+			throw 4;
+        }
+
+        ret = EVP_DigestFinal(ctx, digest, &digestlen);
+
+        if (ret != 1) {
+            cerr << "failed to finalize digest " << endl;
+			ERR_print_errors_fp(stderr);
+			throw 5;
+        }
+
+    }
+    catch (int error_code){
+
+        free(digest);
+        
+        if (error_code > 1){
+            EVP_MD_CTX_FREE(ctx);
+        }
+
+        return -1;
+
+    }
+
+    return 0;
+}
+
 // generate the sts key parameter g**a (diffie-hellman) for the session key establishment
 EVP_PKEY* Client::generate_sts_key_param(){
     EVP_PKEY* dh_params = nullptr;
@@ -668,7 +732,7 @@ bool file_exists(string filename, string username){
     }
     uintmax_t size = filesystem::file_size(path);   //uintmax_t is on 64 bits, overflow must be avoided
     if( size - 4000000000 > 0){
-        cout<< "File too big" <<endl;
+        cout<< "File too big" << endl;
         return false;
     }
     //The file exists and has a size which is less then 4Gib

@@ -47,6 +47,7 @@ class Client{
     bool send_message(void* msg, const uint32_t len);
     int receive_message();
     bool generate_iv (const EVP_CIPHER* cipher);
+    int generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, unsigned char*& digest, int*& digestlen);
     int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
     int send_encrypted_file (string filename, unsigned char* iv, int iv_len);
