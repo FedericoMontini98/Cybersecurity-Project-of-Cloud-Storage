@@ -1,5 +1,8 @@
 #include "client.h"
 #include "./../common/errors.h"
+#include <fstream>
+#include <cstdint>
+#include <filesystem>
 
 // CONSTRUCTOR
 Client::Client(const uint16_t _port){
@@ -648,6 +651,23 @@ bool Client::init_session(){
     return true;
 }
 
+//Check the existance of the file inside the upload directory
+bool file_exists(string filename, string username){
+    string path = UPLOAD_PATH + username + "/Upload/" + filename;
+    ifstream file(path);
+    if(!file.is_open()){
+        cout << "File not found" << endl;
+        return false;
+    }
+    uintmax_t size = filesystem::file_size(path);   //uintmax_t is on 64 bits, overflow must be avoided
+    if( size - 4000000000 > 0){
+        cout<< "File too big" <<endl;
+        return false;
+    }
+    //The file exists and has a size which is less then 4Gib
+    return true;
+}
+
 //Help function that shows all the available commands to the user
 void help(){
     cout<<"===================================== HELP ================================================="<<endl<<endl;
@@ -660,6 +680,45 @@ void help(){
     cout<<"rename fileName newName    : Specifies a file on the server machine. Within the request, the clients sends the new filename. \nIf the renaming operation is not possible, the filename is not changed."<<endl<<endl;
     cout<<"logout                       : The client gracefully closes the connection with the server. "<<endl;
     cout<<"============================================================================================"<<endl<<endl;
+}
+
+//Function that manage the upload command, takes as a parameter the name of the file that the user want to upload. The file must be located in a specific directory.
+void upload(string filename, string username){
+    uint32_t counter = 0;
+    //filename is a string composed from whitelisted chars, so no path traversal allowed (see the cycle at 724)
+    //We can proceed to check the existance of the file
+    if(!file_exists(filename,username)){
+        cout<<"Error during upload"<<endl;
+        cout<<"*******************"<<endl;
+        return;
+    }
+
+    //Check if on server side there is a file with the same name
+    //Packet initialization
+    upload_filename_exist pkt;
+    memset(&pkt,0,sizeof(pkt));
+    pkt.code = BOOTSTRAP_UPLOAD;
+    pkt.filename = htons(filename);
+    pkt.response = false;
+    pkt.counter = counter;
+
+    //Serialization of the data-structure Call FABLAN FUNCTION 
+    //TODO
+    string buffer = "";
+    buffer = pkt.code + " " + pkt.filename + " " pkt.response + " " + pkt.counter;
+    //END
+
+    unsigned char* iv;
+    unsigned char* ciphertext;
+    int cipherlen;
+    //Message encryption
+    int ret=cbc_encrypt_fragment (buffer, buffer.length(), &iv, &ciphertext, &cipherlen)
+    if(ret!=0){
+        cout<<"Error during encryption"<<endl;
+    }
+    
+    send_message((void *)ciphertext, cipherlen);
+
 }
 
 // RUN
@@ -680,28 +739,21 @@ void Client::run(){
 
     }
 
-    //Non so se ci va altro qua
-
     cout<<"======================================="<<endl;
 	cout<<"=            CLIENT AVVIATO           ="<<endl;
 	cout<<"======================================="<<endl;
 
     help();
 
+    //vector that contains the command 
+    vector<string> words{};
+
     while(true){
         string command;
         cout<<"-> Insert a command:"<<endl;
         getline(cin,command);
 
-        //Command whitelisting check
-        if (command.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
-        {
-            std::cerr << "ERR: command check on whitelist fails"<<endl;
-            return false;
-        }
-
         //Command parsing to extract comand and the arguments
-        vector<string> words{};
         string space_delimiter = " ";
         size_t pos = 0;
         while ((pos = text.find(space_delimiter)) != string::npos) {
@@ -720,6 +772,14 @@ void Client::run(){
         if(words.size()>2){
             cout<<"Too many arguments, try again"<<endl;
             continue;
+        }
+
+        for(int i=0; i<words.sixe(); i++){
+            //Command whitelisting check
+            if (word[i].find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+                std::cerr << "ERR: command check on whitelist fails"<<endl;
+                return false;
+            }
         }
         //Check for command existance
         state = -1;
@@ -744,15 +804,13 @@ void Client::run(){
         if(strcmp(words[0],"logout")){
             state = 6;
         }
-        else{
-            state = 7;
-        }
+
         switch(state){
             case 0:
                 help();
             
             case 1:
-                //upload(words[1]);
+                upload(words[1],this->username);
 
             case 2:
                 //download(words[1]);
@@ -769,11 +827,16 @@ void Client::run(){
             case 6:
                 //logout();
 
-            case 7:
+            case -1:
                 cout<<"Wrong command, check and try again"<<endl;
                 continue;
 
         }
+
+        //Clean the command string once the state is chosen
+        words.erase(words.begin(),words.end());
+        //Clear the cin flag
+        cin.clear();
     }
 }
 

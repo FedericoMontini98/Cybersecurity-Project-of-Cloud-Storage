@@ -9,7 +9,10 @@ using namespace std;
  * 
  ***/
 
-# define BOOTSTRAP_LOGIN 1
+# define BOOTSTRAP_LOGIN            1
+# define BOOTSTRAP_UPLOAD           5
+
+
 // sent in clear
 struct bootstrap_login_pkt {
     int code;
@@ -17,4 +20,12 @@ struct bootstrap_login_pkt {
     EVP_PKEY* sts_key_param;
     EVP_PKEY* hmac_key_param;
 };
+
+struct upload_filename_exist {
+    int code;
+    string filename;
+    bool response;      //True: upload allowed  False: upload not allowed
+    uint32_t counter;
+    
+}
 
