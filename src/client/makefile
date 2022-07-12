@@ -4,14 +4,18 @@ CFLAGS = -c -Wall
 
 all: client.exe
 
-client.exe: main.o client.o
+client.exe: main.o client.o utility.o
 
-	$(CC) main.o client.o $(LFLAGS) -o client.exe 
+	$(CC) main.o client.o utility.o $(LFLAGS) -o client.exe 
 	#$(CC) $(LFLAGS) main.o client.o -o client.exe
 
 client.o: client.cpp
 
 	$(CC) $(CFLAGS) client.cpp
+
+utility.o: ./../common/utility.cpp ./../common/utility.h
+	
+	$(CC) $(CFLAGS) ./../common/utility.cpp
 
 main.o: main.cpp
 
