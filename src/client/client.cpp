@@ -1,13 +1,14 @@
-#include "client.h"
 #include "./../common/errors.h"
 #include <fstream>
 #include <cstdint>
-#include <filesystem>
+#include <vector>
+#include "client.h"
+#include "./../common/utility.h"
+
 
 // CONSTRUCTOR
 Client::Client(const uint16_t _port){
     port = _port;
-    iv = malloc(EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
 }
 
 // DESTRUCTOR
@@ -55,9 +56,10 @@ bool Client::extract_private_key(string _username, string password){
 bool Client::send_message(void* msg, const uint32_t len){
     
     ssize_t ret;
+    uint32_t certified_len = htonl(len);
 
     // send message length
-    ret = send (session_socket, &len, sizeof(len), 0);
+    ret = send (session_socket, &certified_len, sizeof(certified_len), 0);
 
     // -1 error, if returns 0 no bytes are sent
     if (ret <= 0){
@@ -66,7 +68,7 @@ bool Client::send_message(void* msg, const uint32_t len){
     }
     
     // send message
-    ret = send (session_socket, msg, sizeof(msg), 0);
+    ret = send (session_socket, msg, len, 0);
 
     // -1 error, if returns 0 no bytes are sent
     if (ret <= 0){
@@ -79,17 +81,11 @@ bool Client::send_message(void* msg, const uint32_t len){
 
 // receive a message from socket
 // DO NOT HANDLE FREE
-int Client::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
+int Client::receive_message(unsigned char*& recv_buffer, uint32_t& len){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
     ssize_t ret;
-    uint32_t len; 
-    unsigned char* recv_buffer; // maybe this could be a field of the class and allocated one time with size 4096 and freed one time
 
     // receive message length
     ret = recv(session_socket, &len, sizeof(uint32_t), 0);
-
-    if (DEBUG) {
-        cout << len << endl;
-    }
 
     if (ret == 0){
         cerr << "ERR: server disconnected" << endl;
@@ -102,17 +98,12 @@ int Client::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
     }
 
     try{
-        // convert len to host format
-        len = ntohl(len);
-
         // allocate receive buffer
-        
-        if (!DEBUG) {
-            recv_buffer = (unsigned char*) malloc (len);
-        }
-        else {
-            // make the receive buffer printable adding '\0'
-            recv_buffer = (unsigned char*) malloc (len+1);
+        len = ntohl(len);
+        recv_buffer = (unsigned char*) malloc (len);
+
+        if (DEBUG) {
+            cout << "msg_len of received message is: " << len << endl;
         }
 
         if (!recv_buffer){
@@ -294,6 +285,7 @@ bool Client::generate_iv (const EVP_CIPHER* cipher){
 // HANDLE FREE ONLY ON ERROR
 int Client::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, 
 int& cipherlen){
+
     int outlen;
     int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
     int ret;
@@ -383,8 +375,7 @@ int& cipherlen){
 
 // function to decrypt fragments
 // this function will set plaintext and plainlen arguments
-int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, 
-int& plainlen){
+int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen){
     int outlen;
     int ret;
 
@@ -537,21 +528,22 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len,
 // sent packet [username | sts_key_param | hmac_key_param]
 //MISS CONTROLS AND FREES
 int Client::send_login_boostrap(){
-    bootstrap_login_pkt pkt;
+    login_bootstrap_pkt pkt;
 
     // initialize to 0 the pack
     memset(&pkt, 0, sizeof(pkt));
 
-    pkt.code = BOOTSTRAP_LOGIN;
-    pkt.sts_key_param = generate_sts_key_param();
+    pkt.code = LOGIN_BOOTSTRAP;
+    pkt.username = username;
+    pkt.symmetric_key_param = generate_sts_key_param();
     pkt.hmac_key_param = generate_sts_key_param();
 
-    if (!pkt.hmac_key_param || !pkt.sts_key_param){
+    if (!pkt.hmac_key_param || !pkt.symmetric_key_param){
         cerr << "ERR: failed to generate session keys parameters" << endl;
         return false;
     }
 
-    if (!send_message(&pkt, sizeof(bootstrap_login_pkt))){
+    if (!send_message(&pkt, sizeof(login_bootstrap_pkt))){
         cerr << "ERR: failed to send login bootstrap packet" << endl;
         return -1;
     }
@@ -562,6 +554,72 @@ int Client::send_login_boostrap(){
 
     return 0;
     
+}
+
+
+
+// generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
+int Client::generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, int msg_len, unsigned char*& digest, unsigned*& digestlen){
+    int ret;
+    EVP_MD_CTX* ctx;
+
+    if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
+        cerr << "message length is not allowed" << endl;
+        return -1;
+    }
+
+    try{
+        digest = (unsigned char*) malloc(EVP_MD_size(hmac_type));
+        if (!digest){
+            cerr << "malloc of digest failed" << endl;
+            throw 1;
+        }
+
+        ctx = EVP_MD_CTX_new();
+
+        if (!ctx){
+            cerr << "context definition failed" << endl;
+            throw 2;
+        }
+
+        ret = EVP_DigestInit(ctx, hmac_type);
+
+        if (ret != 1) {
+			cerr << "failed to initialize digest creation" << endl;
+			ERR_print_errors_fp(stderr);
+			throw 3;
+		}
+
+        ret = EVP_DigestUpdate(ctx, (unsigned char*)msg, sizeof(msg)); //try or put it in input function
+
+        if (ret != 1) {
+            cerr << "failed to update digest " << endl;
+			ERR_print_errors_fp(stderr);
+			throw 4;
+        }
+
+        ret = EVP_DigestFinal(ctx, digest, digestlen);
+
+        if (ret != 1) {
+            cerr << "failed to finalize digest " << endl;
+			ERR_print_errors_fp(stderr);
+			throw 5;
+        }
+
+    }
+    catch (int error_code){
+
+        free(digest);
+        
+        if (error_code > 1){
+            EVP_MD_CTX_free(ctx);
+        }
+
+        return -1;
+
+    }
+
+    return 0;
 }
 
 // generate the sts key parameter g**a (diffie-hellman) for the session key establishment
@@ -609,7 +667,6 @@ EVP_PKEY* Client::generate_sts_key_param(){
             cerr << "ERR: failed dh keygen" << endl;
             throw 4;
         }
-        EVP_PKEY* sts_key_param = generate_sts_key_param();
     }
     catch (int error_code){
 
@@ -670,8 +727,10 @@ bool Client::init_session(){
         return false;
     }
 
+    unsigned char* receive_buffer;
+    uint32_t len;
     // receive response
-    if (receive_message() < 0){
+    if (receive_message(receive_buffer, len) < 0){
         cerr << "ERR: some error in receiving bootstrap login response occurred" << endl;
         return -1;
     }
@@ -684,6 +743,24 @@ bool Client::init_session(){
  *  @username : needed to find the current user directory 
  */
 bool file_exists(string filename, string username){
+    
+    /*string path = UPLOAD_PATH + username + "/Upload/" + filename;
+    ifstream file(path);
+    if(!file.is_open()){
+        cout << "File not found" << endl;
+        return false;
+    }
+    uintmax_t size = std::filesystem::file_size(path);   //uintmax_t is on 64 bits, overflow must be avoided
+    if( size - 4000000000 > 0){
+        cout<< "File too big" << endl;
+        return false;
+    }
+    //The file exists and has a size which is less then 4Gib*/
+    return true;
+}
+
+/*bool file_exists(string filename, string username){
+    
     string path = UPLOAD_PATH + username + "/Upload/" + filename;
     ifstream file(path);
     if(!file.is_open()){
@@ -699,7 +776,25 @@ bool file_exists(string filename, string username){
 
     //The file exists and has a size which is less then 4Gib
     return true;
-}
+}*/
+
+/*bool file_exists(string filename, string username){
+    
+    string path = UPLOAD_PATH + username + "/Upload/" + filename;
+    ifstream file(path);
+    if(!file.is_open()){
+        cout << "File not found" << endl;
+        return false;
+    }
+    uintmax_t size = std::filesystem::file_size(path);   //uintmax_t is on 64 bits, overflow must be avoided
+    if( size - 4000000000 > 0){
+        cout<< "File too big" << endl;
+        return false;
+    }
+    //The file exists and has a size which is less then 4Gib
+    return true;
+}*/
+
 
 /** Help function that shows all the available commands to the user
  */
@@ -738,14 +833,10 @@ void upload(string filename, string username){
     pkt.filename = filename;
     pkt.response = false;
     pkt.counter = counter;
-    ifstream in_file("a.txt", ios::binary);
-    in_file.seekg(0, ios::end);
-   int file_size = in_file.tellg();
-
-    unsigned char* buffer;
+    int pkt_len;
 
     //Serialization of the data-structure
-    buffer = pkt.serialize_message();    //TODO
+    unsigned char* buffer = (unsigned char*) pkt.serialize_message(pkt_len);    //TODO
 
     unsigned char* iv = this->iv;
     unsigned char* ciphertext;
@@ -841,7 +932,7 @@ void upload(string filename, string username){
     /*********** Phase 5: send completion msg *************/
 
     //Free the allocated space
-    free(cyphertext);
+    free(ciphertext);
     free(buffer);
 }
 
@@ -891,7 +982,7 @@ void download(string filename){
 }
 
 // RUN
-void Client::run(){
+/*int Client::run(){
     cout << "RUN" <<endl;
 
     try {
@@ -915,7 +1006,7 @@ void Client::run(){
     help();
 
     //vector that contains the command 
-    vector<string> words{};
+    vector <string> words{};
 
     while(true){
         string command;
@@ -925,11 +1016,11 @@ void Client::run(){
         //Command parsing to extract comand and the arguments
         string space_delimiter = " ";
         size_t pos = 0;
-        while ((pos = text.find(space_delimiter)) != string::npos) {
+        while ((pos = command.find(space_delimiter)) != string::npos) {
             //Push the word inside the vector
-            words.push_back(text.substr(0, pos));
+            words.push_back(command.substr(0, pos));
             //delete the pushed word from the string
-            text.erase(0, pos + space_delimiter.length());
+            command.erase(0, pos + space_delimiter.length());
         }
         //Check the parsing
         if(DEBUG){
@@ -943,34 +1034,36 @@ void Client::run(){
             continue;
         }
 
-        for(int i=0; i<words.sixe(); i++){
+        for(int i=0; i<words.size(); i++){
             //Command whitelisting check
-            if (word[i].find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+            if (words[i].find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
                 std::cerr << "ERR: command check on whitelist fails"<<endl;
-                return false;
+                return -1;
             }
         }
         //Check for command existance
-        state = -1;
-        if(strcmp(words[0],"help")){
+        int state = -1;
+        const char* command_chars = words[0].c_str();
+
+        if(strcmp(command_chars,"help")){
             state = 0;
         }
-        if(strcmp(words[0],"upload")){
+        if(strcmp(command_chars,"upload")){
             state = 1;
         }
-        if(strcmp(words[0],"download")){
+        if(strcmp(command_chars,"download")){
             state = 2;
         }
-        if(strcmp(words[0],"list")){
+        if(strcmp(command_chars,"list")){
             state = 3;
         }
-        if(strcmp(words[0],"rename")){
+        if(strcmp(command_chars,"rename")){
             state = 4;
         }
-        if(strcmp(words[0],"delete")){
+        if(strcmp(command_chars,"delete")){
             state = 5;
         }
-        if(strcmp(words[0],"logout")){
+        if(strcmp(command_chars,"logout")){
             state = 6;
         }
 
@@ -1007,7 +1100,7 @@ void Client::run(){
         //Clear the cin flag
         cin.clear();
     }
-}
+}*/
 
 // TESTS
 
@@ -1055,4 +1148,33 @@ void Client::run(){
     recv (session_socket, send_buffer, 5, 0);
   
 }*/
+
+int Client::run(){
+    cout << "RUN" << endl;
+
+    int ret;
+    
+    // initialize socket
+    if (!init_socket()){
+        cerr << " Error: socket definition failed" << endl;
+        return false;
+    }
+
+    // connect to server
+    ret = connect(session_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
+	if (ret < 0) {
+		cerr << "Error: connection to server failed" << endl;
+		return false;
+	}
+
+    login_bootstrap_pkt pkt;
+    int len;
+    pkt.username = username;
+    pkt.symmetric_key_param = generate_sts_key_param();
+    pkt.hmac_key_param = generate_sts_key_param();
+    
+    void* send_buffer = pkt.serialize_message(len);
+    
+    send_message(send_buffer, len);
+}
 
