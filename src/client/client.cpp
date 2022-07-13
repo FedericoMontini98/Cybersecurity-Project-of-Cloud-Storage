@@ -924,6 +924,7 @@ int Client::upload(string username){
     //Free the allocated space
     free(ciphertext);
     free(buffer);
+    free(this->iv);
     return 0;
 }
 
@@ -971,11 +972,17 @@ int Client::download(string username){
         cout<<"Error during encryption"<<endl;
         return -1;
     }
+    //buffer is no longer needed
+    free(buffer);
+
     //Send the iv
     send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
 
     //send the cyphertext
     send_message((void*)ciphertext, cipherlen);
+    
+    //ciphertext no longer needed
+    free(ciphertext);
 
     //Generation of the HMAC
 
@@ -984,6 +991,7 @@ int Client::download(string username){
     //send_message((void*)hmac, /*hmacsize*/)
 
     //ret = receive_message()
+    free(iv)
     return 0;
 }
 
