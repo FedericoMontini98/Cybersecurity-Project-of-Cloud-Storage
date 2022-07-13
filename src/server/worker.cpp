@@ -1,4 +1,5 @@
 #include "server.h"
+#include "./../common/utility.h"
 
 Worker::Worker (Server* server, const int socket, const sockaddr_in addr){
     server = server;
@@ -14,6 +15,15 @@ Worker::~Worker(){
     free(iv);
 }
 
+// to test serialization
+void debug_serialize_pkt(uint8_t* buffer){
+    login_bootstrap_pkt pkt;
+
+    pkt.deserialize_message((uint8_t*) buffer);
+
+    exit(EXIT_FAILURE);
+}
+
 // receive message from socket
 // MAYBE DEFINE A RECV_BUFFER IN CLASS
 int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF A FRAGMENT: 4096
@@ -23,10 +33,6 @@ int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
 
     // receive message length
     ret = recv(socket_fd, &len, sizeof(uint32_t), 0);
-
-    if (DEBUG) {
-        cout << len << endl;
-    }
 
     if (ret == 0){
         cerr << "ERR: client disconnected" << endl;
@@ -39,18 +45,14 @@ int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
     }
 
     try{
-        // convert len to host format
-        len = ntohl(len);
-
         // allocate receive buffer
-        
-        if (!DEBUG) {
-            recv_buffer = (unsigned char*) malloc (len);
+        len = ntohl(len);
+        recv_buffer = (unsigned char*) malloc (len);
+
+        if (DEBUG) {
+            cout << "msg_len of received message is: " << len << endl;
         }
-        else {
-            // make the receive buffer printable adding '\0'
-            recv_buffer = (unsigned char*) malloc (len+1);
-        }
+
 
         if (!recv_buffer){
             cerr << "ERR: recv_buffer malloc fail" << endl;
@@ -83,23 +85,27 @@ int Worker::receive_message(){ //EDIT: MAYBE ADD CHECK ON THE MAXIMUM LENGHT OF 
 
     }
 
-    if (DEBUG){
-        recv_buffer[len] = '\0'; 
-        printf("%s\n", recv_buffer);
-    }
-
     // handle command
-    handle_command(recv_buffer);
+    //handle_command(recv_buffer);
 
-    // the content of the buffer is not needed anymore, DELETE IF BUFFER IS DEFINED IN CLASS
+    // TEST SERIALIZATION
+    debug_serialize_pkt(recv_buffer);
+
+    // the content of the buffer is not needed anymore
     free(recv_buffer);
 
     return 0;
 }
 
+
 void Worker::run (){
     
     while(true){
-        receive_message();
+        int ret = receive_message();
+
+        // CLIENT DISCONNECTED
+        if (ret == -2){
+            exit(EXIT_FAILURE);
+        }
     }
 }

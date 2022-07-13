@@ -1,14 +1,16 @@
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <openssl/rand.h>
+#include <openssl/pem.h>
+#include <openssl/evp.h>
+#include <stdlib.h>
+#include <iostream>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <thread>
-#include <cstring>
-#include <openssl/pem.h>
-#include <openssl/evp.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-#include <openssl/rand.h>
 #include "./../common/communication_packets.h"
+
 
 # define DEBUG true
 # define MAX_USERNAME_LENGTH 30
@@ -40,13 +42,14 @@ class Client{
     public:
     Client(const uint16_t _port);
     ~Client();
-    void run();
+    int run();
     bool extract_private_key(string _username, string password);
     bool init_session();
     bool init_socket();
     bool send_message(void* msg, const uint32_t len);
-    int receive_message();
+    int receive_message(unsigned char*& recv_buffer, uint32_t& len);
     bool generate_iv (const EVP_CIPHER* cipher);
+    int generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, int msg_len, unsigned char*& digest, unsigned*& digestlen);
     int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
     int send_encrypted_file (string filename, unsigned char* iv, int iv_len);
@@ -54,7 +57,7 @@ class Client{
 
     //Operational functions
     void help();
-    void upload(string filename, string username);
+    int upload(string filename, string username);
 
     //Utility functions
     bool file_exists(string filename, string username);
