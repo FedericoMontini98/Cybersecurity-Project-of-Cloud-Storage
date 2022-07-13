@@ -53,12 +53,13 @@ class Client{
     int generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, int msg_len, unsigned char*& digest, unsigned*& digestlen);
     int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
-    int send_encrypted_file (string filename, unsigned char* iv, int iv_len);
+    int send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint64_t& counter);
     EVP_PKEY* generate_sts_key_param();
 
     //Operational functions
     void help();
-    int upload(string filename, string username);
+    int upload(string username);
+    int download();
 
     //Utility functions
     bool file_exists(string filename, string username);

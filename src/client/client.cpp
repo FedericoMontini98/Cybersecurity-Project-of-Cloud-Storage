@@ -4,6 +4,8 @@
 #include <vector>
 #include "client.h"
 #include "./../common/utility.h"
+#include <sys/stat.h>
+#include <sstream>
 
 
 // CONSTRUCTOR
@@ -499,18 +501,20 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len,
         }
 
         unsigned char* ct;
-        uintmax_t len_ct;
+        int len_ct;
 
-        file_upload pkt;
+        /*file_upload pkt;
         pkt.code = FILE_UPLOAD;
         pkt.msg = buffer;
-        pkt.counter = counter;
+        pkt.counter = counter;*/
 
-        buffer = pkt.serialize_message();
+        uint32_t cipherlen = strlen((char*)ct);
 
-        cbc_encrypt_fragment(&buffer, ret, this->iv, &ct, &len_ct);
+        //buffer = pkt.serialize_message();
 
-        if(!send_message((void*)ciphertext, cipherlen)){
+        cbc_encrypt_fragment(buffer, ret, this->iv, ct, len_ct);
+
+        if(!send_message((void*)ct, cipherlen)){
             cout<<"Error: send of a fragment failed"<<endl;
             return -1;
         }   
@@ -529,9 +533,6 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len,
 //MISS CONTROLS AND FREES
 int Client::send_login_boostrap(){
     login_bootstrap_pkt pkt;
-
-    // initialize to 0 the pack
-    memset(&pkt, 0, sizeof(pkt));
 
     pkt.code = LOGIN_BOOTSTRAP;
     pkt.username = username;
@@ -742,72 +743,33 @@ bool Client::init_session(){
  *  @filename : file of which we have to check the existance
  *  @username : needed to find the current user directory 
  */
-bool file_exists(string filename, string username){
-    
-    /*string path = UPLOAD_PATH + username + "/Upload/" + filename;
-    ifstream file(path);
-    if(!file.is_open()){
-        cout << "File not found" << endl;
+bool Client::file_exists(string filename, string username){
+    string path = UPLOAD_PATH + username + "/Upload/" + filename;
+    struct stat buffer;
+    if (stat(path.c_str(),&buffer)!=0){ //stat failed
+        cout<<"Failed stat function: File doesn't exists in the Upload dir"<<endl;
         return false;
     }
-    uintmax_t size = std::filesystem::file_size(path);   //uintmax_t is on 64 bits, overflow must be avoided
-    if( size - 4000000000 > 0){
+    if( buffer.st_size - 4294967296 > 0){   //4294967296 Bytes = 4GiB
         cout<< "File too big" << endl;
         return false;
     }
-    //The file exists and has a size which is less then 4Gib*/
+    //The file exists and has a size which is less then 4Gib
     return true;
 }
 
-/*bool file_exists(string filename, string username){
-    
-    string path = UPLOAD_PATH + username + "/Upload/" + filename;
-    ifstream file(path);
-    if(!file.is_open()){
-        cout << "File not found" << endl;
-        return false;
-    }
-
-    uintmax_t size = filesystem::file_size(path);   //uintmax_t is on 64 bits, overflow must be avoided
-    if( size - FILE_MAX_SIZE > 0){
-        cout<< "File too big" <<endl;
-        return false;
-    }
-
-    //The file exists and has a size which is less then 4Gib
-    return true;
-}*/
-
-/*bool file_exists(string filename, string username){
-    
-    string path = UPLOAD_PATH + username + "/Upload/" + filename;
-    ifstream file(path);
-    if(!file.is_open()){
-        cout << "File not found" << endl;
-        return false;
-    }
-    uintmax_t size = std::filesystem::file_size(path);   //uintmax_t is on 64 bits, overflow must be avoided
-    if( size - 4000000000 > 0){
-        cout<< "File too big" << endl;
-        return false;
-    }
-    //The file exists and has a size which is less then 4Gib
-    return true;
-}*/
-
-
 /** Help function that shows all the available commands to the user
  */
-void help(){
+void Client::help(){
     cout<<"===================================== HELP ================================================="<<endl<<endl;
-    cout<<"The available commands are the following:"<<endl;
-    cout<<"help                         : that shows all the available commands"<<endl;
-    cout<<"download fileName           : Specifies a file on the server machine. The server sends the requested file to the user.\nThe filename of any downloaded file must be the filename used to store the file on the server.\nIf this is not possible, the file is not downloaded."<<endl<<endl;
-    cout<<"delete fileName             : Specifies a file on the server machine. The server asks the user for confirmation.\nIf the user confirms, the file is deleted from the server. "<<endl<<endl;
-    cout<<"upload fileName             : Specifies a filename on the client machine and sends it to the server. \nThe server saves the uploaded file with the filename specified by the user.\nIf this is not possible, the file is not uploaded. The max file size is 4GiB"<<endl<<endl;
-    cout<<"list                         : The client asks to the server the list of the filenames of the available files in his dedicated storage.\n The client prints to screen the list."<<endl<<endl;
-    cout<<"rename fileName newName    : Specifies a file on the server machine. Within the request, the clients sends the new filename. \nIf the renaming operation is not possible, the filename is not changed."<<endl<<endl;
-    cout<<"logout                       : The client gracefully closes the connection with the server. "<<endl;
+    cout<<"The available commands are the following:"<<endl<<endl;
+    cout<<"help: that shows all the available commands"<<endl<<endl;
+    cout<<"download fileName: Specifies a file on the server machine. The server sends the requested file to the user. The filename of any downloaded file must be the filename used to store the file on the server. If this is not possible, the file is not downloaded."<<endl<<endl;
+    cout<<"delete fileName: Specifies a file on the server machine. The server asks the user for confirmation. If the user confirms, the file is deleted from the server. "<<endl<<endl;
+    cout<<"upload fileName: Specifies a filename on the client machine and sends it to the server. The server saves the uploaded file with the filename specified by the user. If this is not possible, the file is not uploaded. The max file size is 4GiB"<<endl<<endl;
+    cout<<"list: The client asks to the server the list of the filenames of the available files in his dedicated storage. The client prints to screen the list."<<endl<<endl;
+    cout<<"rename fileName newName: Specifies a file on the server machine. Within the request, the clients sends the new filename. If the renaming operation is not possible, the filename is not changed."<<endl<<endl;
+    cout<<"logout: The client gracefully closes the connection with the server. "<<endl;
     cout<<"============================================================================================"<<endl<<endl;
 }
 
@@ -815,28 +777,37 @@ void help(){
  *  @filename : name of the file that the user wants to upload 
  *  @username : the username used to log in
  */
-void upload(string filename, string username){
-    uint32_t counter = 0;
+int Client::upload(string username){
+    uint64_t counter = 0;
+
+    cout<<"Which file do you want to upload on the cloud?"<<endl;
+    string filename;
+    cin>>filename;
+
+    if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+        std::cerr << "ERR: command check on whitelist fails"<<endl;
+        return -1;
+    }
+
     //filename is a string composed from whitelisted chars, so no path traversal allowed (see the cycle at 724)
     //We can proceed to check the existance of the file
     if(!file_exists(filename,username)){
         cout<<"Error during upload"<<endl;
         cout<<"*******************"<<endl;
-        return;
+        return -1;
     }
 
+    cout<<"File found, it is less than 4 Gib"<<endl;
     //Check if on server side there is a file with the same name
     //Packet initialization
     bootstrap_upload pkt;
-    memset(&pkt,0,sizeof(pkt));
     pkt.code = BOOTSTRAP_UPLOAD;
     pkt.filename = filename;
     pkt.response = false;
     pkt.counter = counter;
-    int pkt_len;
 
     //Serialization of the data-structure
-    unsigned char* buffer = (unsigned char*) pkt.serialize_message(pkt_len);    //TODO
+    unsigned char* buffer /*= (unsigned char*) pkt.serialize_message(pkt_len)*/;    //TODO
 
     unsigned char* iv = this->iv;
     unsigned char* ciphertext;
@@ -846,20 +817,21 @@ void upload(string filename, string username){
     /******* Phase 1: send iv + encrypt_msg + HMAC ********/
 
     //Message encryption
-    int ret=cbc_encrypt_fragment(buffer, buffer.size(), &iv, &ciphertext, &cipherlen)
-    if(ret!=0){
+    if(cbc_encrypt_fragment(buffer, strlen((char*)buffer), iv, ciphertext, cipherlen)!=0){
         cout<<"Error during encryption"<<endl;
+        return -1;
     }
 
     //Send the iv
     if(!send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()))){
         cout<<"Error during send #1"<<endl;
-        return;
+        return -1;
     }
 
     //send the cyphertext
     if(!send_message((void*)ciphertext, cipherlen)){
         cout<<"Error during send #2"<<endl;
+        return -1;
     }
 
     //Generation of the HMAC
@@ -874,29 +846,28 @@ void upload(string filename, string username){
 
     /******************************************************/
     /******** Phase 2: receive encrypt_msg + HMAC *********/
-
+    uint32_t size;
     //receive the encrypted message
-    ret = receive_message(&cyphertext);
-    if(ret!=0){
+    if(receive_message(ciphertext,size)!=0){
         cout<<"Error during a receive"<<endl;
-        return;
+        return -1;
     }
     //Get the cyphertext received size
-    uint64_t size_pt;
-    uint64_t size_ct = strlen((char*)cyphertext);
+    int size_pt;
+    uint64_t size_ct = strlen((char*)ciphertext);
 
     //Cyphertext decryption with session key
-    if (cbc_decrypt_fragment(cyphertext,size, iv, &buffer, &size_pt) != 0){
+    if (cbc_decrypt_fragment(ciphertext,size_ct, iv, buffer, size_pt) != 0){
         cout << "Error during decryption" << endl;
-        return;
+        return -1;
     }
 
     //receive the encrypted message
-    ret = receive_message(&HMAC);
-    if(ret!=0){
+    /*
+    if(receive_message(&HMAC)!=0){
         cout<<"Error during the communication with the server"<<endl;
-        return;
-    }
+        return -1;
+    }*/
 
     //TODO 
     //CHECK HMAC VALIDITY
@@ -906,11 +877,11 @@ void upload(string filename, string username){
     }
     */
 
-    pkt.deserialize_message(buffer);    //TODO
+    //pkt.deserialize_message(buffer);    //TODO
 
-    if(pkt->response == false){
+    if(pkt.response == false){
         cout<<"A file with this name is already in the cloud, rename it locally and try again"<<endl;
-        return;
+        return -1;
     }
 
     counter++;
@@ -918,9 +889,9 @@ void upload(string filename, string username){
     /******************************************************/
     /************* Phase 3: send file chunks **************/
 
-    if(send_encrypted_file (filename, iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()),&counter)!=0){
+    if(send_encrypted_file (filename, iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()),counter)!=0){
         cout << "Error during phase 3 of the upload" << endl;
-        return;
+        return -1;
     }
 
     /******************************************************/
@@ -934,37 +905,39 @@ void upload(string filename, string username){
     //Free the allocated space
     free(ciphertext);
     free(buffer);
+    return 0;
 }
 
 /**Function that manage the downlaod command, takes as a parameter the name of the file that the user want to download.
  *  @filename : name of the file that the user wants to download 
  *  @username : the username used to log in
  */
-void download(string filename){
+int Client::download(){
     uint32_t counter = 0;
+
+    string filename = "";
 
     //Check if on server side there is a file with the same name
     //Packet initialization
-    upload_filename_exist pkt;
-    memset(&pkt,0,sizeof(pkt));
+    bootstrap_download pkt;
     pkt.code = BOOTSTRAP_DOWNLOAD;
     pkt.filename = filename;
     pkt.response = false;
     pkt.counter = counter;
 
-    unsigned char* buffer;
+    unsigned char* buffer = nullptr;
 
     //Serialization of the data-structure
-    buffer = pkt.serialize_message();    //TODO
+    //unsigned char* buffer /*= pkt.serialize_message()*/;    //TODO
 
     unsigned char* iv = this->iv;
-    unsigned char* ciphertext = ;
+    unsigned char* ciphertext;
     int cipherlen;
 
     //Message encryption
-    int ret=cbc_encrypt_fragment(buffer, buffer.size(), &iv, &ciphertext, &cipherlen)
-    if(ret!=0){
+    if(cbc_encrypt_fragment(buffer, strlen((char*)buffer), iv, ciphertext, cipherlen)!=0){
         cout<<"Error during encryption"<<endl;
+        return -1;
     }
     //Send the iv
     send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
@@ -978,11 +951,12 @@ void download(string filename){
 
     //send_message((void*)hmac, /*hmacsize*/)
 
-    ret = receive_message()
+    //ret = receive_message()
+    return 0;
 }
 
 // RUN
-/*int Client::run(){
+int Client::run(){
     cout << "RUN" <<endl;
 
     try {
@@ -1001,7 +975,7 @@ void download(string filename){
 
     cout<<"======================================="<<endl;
 	cout<<"=            CLIENT AVVIATO           ="<<endl;
-	cout<<"======================================="<<endl;
+	cout<<"======================================="<<endl<<endl<<endl;
 
     help();
 
@@ -1011,83 +985,75 @@ void download(string filename){
     while(true){
         string command;
         cout<<"-> Insert a command:"<<endl;
-        getline(cin,command);
+        cin>>command;
 
-        //Command parsing to extract comand and the arguments
-        string space_delimiter = " ";
-        size_t pos = 0;
-        while ((pos = command.find(space_delimiter)) != string::npos) {
-            //Push the word inside the vector
-            words.push_back(command.substr(0, pos));
-            //delete the pushed word from the string
-            command.erase(0, pos + space_delimiter.length());
-        }
-        //Check the parsing
-        if(DEBUG){
-            for (const auto &str : words) {
-                cout << str << endl;
-            }
+
+        if (command.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+            std::cerr << "ERR: command check on whitelist fails"<<endl;
+            return -1;
         }
 
-        if(words.size()>2){
-            cout<<"Too many arguments, try again"<<endl;
-            continue;
-        }
-
-        for(int i=0; i<words.size(); i++){
-            //Command whitelisting check
-            if (words[i].find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
-                std::cerr << "ERR: command check on whitelist fails"<<endl;
-                return -1;
-            }
-        }
         //Check for command existance
         int state = -1;
-        const char* command_chars = words[0].c_str();
+        const char* command_chars = command.c_str();
 
-        if(strcmp(command_chars,"help")){
+        if(!strcmp(command_chars,"help")){
             state = 0;
+            //cout<<"sei dentro help"<<endl;
         }
-        if(strcmp(command_chars,"upload")){
+        if(!strcmp(command_chars,"upload")){
             state = 1;
+            //cout<<"sei dentro upload"<<endl;
         }
-        if(strcmp(command_chars,"download")){
+        if(!strcmp(command_chars,"download")){
             state = 2;
+            //cout<<"sei dentro download"<<endl;
         }
-        if(strcmp(command_chars,"list")){
+        if(!strcmp(command_chars,"list")){
             state = 3;
+            //cout<<"sei dentro list"<<endl;
         }
-        if(strcmp(command_chars,"rename")){
+        if(!strcmp(command_chars,"rename")){
             state = 4;
+            //cout<<"sei dentro rename"<<endl;
         }
-        if(strcmp(command_chars,"delete")){
+        if(!strcmp(command_chars,"delete")){
             state = 5;
+            //cout<<"sei dentro delete"<<endl;
         }
-        if(strcmp(command_chars,"logout")){
+        if(!strcmp(command_chars,"logout")){
             state = 6;
+            //cout<<"sei dentro logout"<<endl;
         }
 
         switch(state){
             case 0:
                 help();
+                continue;
             
             case 1:
-                upload(words[1],this->username);
+                upload(this->username);
+                continue;
 
             case 2:
-                download(words[1]);
+                download();
+                continue;
 
             case 3:
                 //list();
+                continue;
 
             case 4:
                 //rename(words[1],words[2]);
+                continue;
 
             case 5:
                 //delete(words[1]);
+                continue;
 
             case 6:
                 //logout();
+                continue;
 
             case -1:
                 cout<<"Wrong command, check and try again"<<endl;
@@ -1100,7 +1066,7 @@ void download(string filename){
         //Clear the cin flag
         cin.clear();
     }
-}*/
+}
 
 // TESTS
 
@@ -1148,7 +1114,7 @@ void download(string filename){
     recv (session_socket, send_buffer, 5, 0);
   
 }*/
-
+/*
 int Client::run(){
     cout << "RUN" << endl;
 
@@ -1176,5 +1142,7 @@ int Client::run(){
     void* send_buffer = pkt.serialize_message(len);
     
     send_message(send_buffer, len);
-}
+    return 0;
+}*/
+
 

@@ -9,9 +9,6 @@ using namespace std;
 
 // PACKET CODES
 # define BOOTSTRAP_LOGIN            1
-# define BOOTSTRAP_UPLOAD           5
-# define BOOTSTRAP_DOWNLOAD         10
-# define FILE_UPLOAD                6
 
 
 /*
@@ -152,6 +149,7 @@ struct login_bootstrap_pkt {
     }
 };
 
+# define BOOTSTRAP_UPLOAD           5
 struct bootstrap_upload {
     uint8_t code;
     string filename;
@@ -159,13 +157,24 @@ struct bootstrap_upload {
     uint32_t counter;
     uintmax_t size;
     
-}
+};
 
+# define FILE_UPLOAD                6
 struct file_upload {
     uint8_t code;
     unsigned char* msg;
     bool response;      //True: upload allowed  False: upload not allowed
     uint32_t counter;
+    
+};
+
+# define BOOTSTRAP_DOWNLOAD         10
+struct bootstrap_download {
+    uint8_t code;
+    string filename;
+    bool response;      //True: upload allowed  False: upload not allowed
+    uint32_t counter;
+    uintmax_t size;
     
 };
 
