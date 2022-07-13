@@ -37,7 +37,7 @@ class Client{
     /* must be freed */
     EVP_PKEY* private_key = nullptr; 
     unsigned char* symmetric_key = (unsigned char*) "0123456789012345"; //EDIT set to nullptr
-    unsigned char* hmac_key = nullptr;
+    unsigned char* hmac_key = (unsigned char*) "0123456789012345";
 
     public:
     Client(const uint16_t _port);
@@ -49,7 +49,7 @@ class Client{
     bool send_message(void* msg, const uint32_t len);
     int receive_message(unsigned char*& recv_buffer, uint32_t& len);
     bool generate_iv (const EVP_CIPHER* cipher);
-    int generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, int msg_len, unsigned char*& digest, unsigned*& digestlen);
+    int generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen);
     int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
     int send_encrypted_file (string filename, unsigned char* iv, int iv_len);

@@ -23,7 +23,7 @@ using namespace std;
 # define LOGIN_BOOTSTRAP 1
 
 struct login_bootstrap_pkt {
-    uint16_t code = LOGIN_BOOTSTRAP;
+    uint16_t code;
     uint16_t username_len;
     string username;
     uint32_t symmetric_key_param_len;
@@ -108,13 +108,18 @@ struct login_bootstrap_pkt {
 
     // function that deserialize a pkt from the network and set
     // the field of the struct
-    void deserialize_message(uint8_t* serialized_pkt){
+    bool deserialize_message(uint8_t* serialized_pkt){
         int pointer_counter = 0;
 
         // copy of the code
         memcpy (&code, serialized_pkt, sizeof(code));
         code = ntohs(code);
         pointer_counter += sizeof(code);
+		
+		// pkt type mismatch
+		if (code != LOGIN_BOOTSTRAP){
+			return false;
+		}
 
         // copy username_len
         memcpy(&username_len, serialized_pkt + pointer_counter, sizeof(username_len));
@@ -159,7 +164,7 @@ struct upload_filename_exist {
 };
 
 # define LOGIN_REFUSE_CONNECTION 2
-// sent in clear
+
 struct login_refuse_connection_pkt {
     uint16_t code;
 
@@ -167,22 +172,48 @@ struct login_refuse_connection_pkt {
         code= htons(code);
     }
 
-    void deserialize_message(){
+    bool deserialize_message(){
         code= ntohs(code);
+		
+		if (code != LOGIN_REFUSE_CONNECTION){
+			return false;
+		}
     }
 };
 
 # define LOGIN_SERVER_AUTHENTICATION 3
-// sent in clear
+
 struct login_server_authentication_pkt {
+	// clear fields
     uint16_t code;
+	X509* server_cert;
+	uint8_t* iv_cbc;
+	
+	// encrypted string
+	uint32_t encrypted_signing_len;
+	char* encrypted_signing;
+	
+	// Decrypted fields, set in deserialization
+	uint32_t symmetric_key_param_len_server;
+    uint32_t hmac_key_param_len_server;
+	uint32_t symmetric_key_param_len;
+    uint32_t hmac_key_param_len;
+	
+	EVP_PKEY* symmetric_key_param_server;
+	EVP_PKEY* symmetric_key_param;
+	EVP_PKEY* hmac_key_param_server;
+	EVP_PKEY* hmac_key_param;
 
     void serialize_message(){
         code = htons(code);
     }
 
-    void deserialize_message(){
+    bool deserialize_message(uint8_t* serialized_pkt){
         code = ntohs(code);
+		
+		if (code != LOGIN_SERVER_AUTHENTICATION){
+			return false;
+		}
     }
 };
 
@@ -190,6 +221,7 @@ struct login_server_authentication_pkt {
 // sent in clear
 struct login_client_authentication_pkt {
     uint16_t code;
+	
 
     void serialize_message(){
         code = htons(code);
@@ -199,4 +231,5 @@ struct login_client_authentication_pkt {
         code = ntohs(code);
     }
 };
+
 
