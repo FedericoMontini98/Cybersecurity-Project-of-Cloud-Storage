@@ -44,7 +44,6 @@ int main(int argc, char** argv) {
         cout << "Username does not exists or password is wrong" <<endl;
         exit(EXIT_FAILURE);
     }
-
     // load openSSL error strings
     SSL_load_error_strings();
 

@@ -19,7 +19,8 @@
 # define USERNAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-"
 # define FILENAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-."
 # define FILE_FRAGMENTS_SIZE 4096
-# define UPLOAD_PATH "./users/"
+# define FILE_PATH "./users/"
+# define FILE_MAX_SIZE 4294967296
 
 // MAYBE ADD SEND AND RECV BUFFER
 class Client{
@@ -52,15 +53,17 @@ class Client{
     int generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, int msg_len, unsigned char*& digest, unsigned*& digestlen);
     int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
-    int send_encrypted_file (string filename, unsigned char* iv, int iv_len);
+    int send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint32_t& counter);
     EVP_PKEY* generate_sts_key_param();
 
     //Operational functions
     void help();
-    int upload(string filename, string username);
+    int upload(string username);
+    int download(string username);
 
     //Utility functions
-    bool file_exists(string filename, string username);
+    uint32_t file_exists(string filename, string username);
+    uint32_t file_exists_to_download(string filename, string username);
 
     // packets methods
     int send_login_boostrap();
