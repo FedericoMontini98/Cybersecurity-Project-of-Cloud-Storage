@@ -78,7 +78,7 @@ bool Client::send_message(void* msg, const uint32_t len){
         return false;
     }
 
-    return true;
+    return true; 
 }
 
 // receive a message from socket
@@ -465,7 +465,7 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
 }
 
 // encrypt using cbc_encrypt but for pieces of file
-int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint64_t& counter){
+int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint32_t& counter){
     unsigned char* buffer;
 
     // check filename on whitelist
@@ -743,19 +743,33 @@ bool Client::init_session(){
  *  @filename : file of which we have to check the existance
  *  @username : needed to find the current user directory 
  */
-bool Client::file_exists(string filename, string username){
-    string path = UPLOAD_PATH + username + "/Upload/" + filename;
+uint32_t Client::file_exists(string filename, string username){
+    string path = FILE_PATH + username + "/Upload/" + filename;
     struct stat buffer;
     if (stat(path.c_str(),&buffer)!=0){ //stat failed
         cout<<"Failed stat function: File doesn't exists in the Upload dir"<<endl;
-        return false;
+        return 0;
     }
     if( buffer.st_size - 4294967296 > 0){   //4294967296 Bytes = 4GiB
         cout<< "File too big" << endl;
-        return false;
+        return 0;
     }
     //The file exists and has a size which is less then 4Gib
-    return true;
+    return buffer.st_size;
+}
+
+/**Check the existance of the file inside the download directory
+ *  @filename : file of which we have to check the existance
+ *  @username : needed to find the current user directory 
+ */
+uint32_t Client::file_exists_to_download(string filename, string username){
+    string path = FILE_PATH + username + "/Download/" + filename;
+    struct stat buffer;
+    if (stat(path.c_str(),&buffer)!=0){ //stat failed
+        return 0;
+    }
+    //The file exists and has a size which is less then 4Gib
+    return -1;
 }
 
 /** Help function that shows all the available commands to the user
@@ -770,7 +784,7 @@ void Client::help(){
     cout<<"list: The client asks to the server the list of the filenames of the available files in his dedicated storage. The client prints to screen the list."<<endl<<endl;
     cout<<"rename fileName newName: Specifies a file on the server machine. Within the request, the clients sends the new filename. If the renaming operation is not possible, the filename is not changed."<<endl<<endl;
     cout<<"logout: The client gracefully closes the connection with the server. "<<endl;
-    cout<<"============================================================================================"<<endl<<endl;
+    cout<<"============================================================================================"<<endl<<endl; 
 }
 
 /**Function that manage the upload command, takes as a parameter the name of the file that the user want to upload. The file must be located in a specific directory.
@@ -778,9 +792,10 @@ void Client::help(){
  *  @username : the username used to log in
  */
 int Client::upload(string username){
-    uint64_t counter = 0;
-
+    uint32_t counter = 0;
+    cout<<"**********************************************"<<endl;
     cout<<"Which file do you want to upload on the cloud?"<<endl;
+    cout<<"**********************************************"<<endl<<endl;
     string filename;
     cin>>filename;
 
@@ -789,39 +804,43 @@ int Client::upload(string username){
         return -1;
     }
 
+    //I need to be sure that no other file is in Download directory with the same name
+
     //filename is a string composed from whitelisted chars, so no path traversal allowed (see the cycle at 724)
     //We can proceed to check the existance of the file
-    if(!file_exists(filename,username)){
+    uint32_t size_file = file_exists(filename,username);
+    if(size_file==0){
         cout<<"Error during upload"<<endl;
         cout<<"*******************"<<endl;
         return -1;
     }
 
-    cout<<"File found, it is less than 4 Gib"<<endl;
     //Check if on server side there is a file with the same name
     //Packet initialization
     bootstrap_upload pkt;
     pkt.code = BOOTSTRAP_UPLOAD;
     pkt.filename = filename;
-    pkt.response = false;
+    pkt.response = 0;
     pkt.counter = counter;
+    pkt.size = size_file;
 
     //Serialization of the data-structure
-    unsigned char* buffer /*= (unsigned char*) pkt.serialize_message(pkt_len)*/;    //TODO
+    int size_pkt;
+    unsigned char* buffer = (unsigned char *)pkt.serialize_message(size_pkt);
 
     unsigned char* iv = this->iv;
     unsigned char* ciphertext;
-    int cipherlen;
+    int cipherlen; 
 
     /******************************************************/
     /******* Phase 1: send iv + encrypt_msg + HMAC ********/
 
     //Message encryption
-    if(cbc_encrypt_fragment(buffer, strlen((char*)buffer), iv, ciphertext, cipherlen)!=0){
+    if(cbc_encrypt_fragment(buffer, size_pkt, iv, ciphertext, cipherlen)!=0){
         cout<<"Error during encryption"<<endl;
         return -1;
     }
-
+    
     //Send the iv
     if(!send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()))){
         cout<<"Error during send #1"<<endl;
@@ -901,7 +920,7 @@ int Client::upload(string username){
 
     /******************************************************/
     /*********** Phase 5: send completion msg *************/
-
+    
     //Free the allocated space
     free(ciphertext);
     free(buffer);
@@ -912,30 +931,43 @@ int Client::upload(string username){
  *  @filename : name of the file that the user wants to download 
  *  @username : the username used to log in
  */
-int Client::download(){
+int Client::download(string username){
     uint32_t counter = 0;
 
-    string filename = "";
+    cout<<"**************************************************"<<endl;
+    cout<<"Which file do you want to download from the cloud?"<<endl;
+    cout<<"**************************************************"<<endl<<endl;
 
+    string filename;
+    cin>>filename;
+
+    if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+        std::cerr << "ERR: command check on whitelist fails"<<endl;
+        return -1;
+    }
+
+    if(file_exists_to_download(filename, username)!=0){
+        std::cerr << "ERR: file already inside download dir"<<endl;
+        return -1;
+    }
     //Check if on server side there is a file with the same name
     //Packet initialization
     bootstrap_download pkt;
     pkt.code = BOOTSTRAP_DOWNLOAD;
     pkt.filename = filename;
-    pkt.response = false;
     pkt.counter = counter;
 
-    unsigned char* buffer = nullptr;
+    //Data structure serialization
+    int pkt_len;
+    unsigned char* buffer = (unsigned char *)pkt.serialize_message(pkt_len);
 
-    //Serialization of the data-structure
-    //unsigned char* buffer /*= pkt.serialize_message()*/;    //TODO
 
-    unsigned char* iv = this->iv;
+    unsigned char* iv = this->iv; 
     unsigned char* ciphertext;
     int cipherlen;
 
     //Message encryption
-    if(cbc_encrypt_fragment(buffer, strlen((char*)buffer), iv, ciphertext, cipherlen)!=0){
+    if(cbc_encrypt_fragment(buffer, pkt_len, iv, ciphertext, cipherlen)!=0){
         cout<<"Error during encryption"<<endl;
         return -1;
     }
@@ -1036,7 +1068,7 @@ int Client::run(){
                 continue;
 
             case 2:
-                download();
+                download(this->username);
                 continue;
 
             case 3:

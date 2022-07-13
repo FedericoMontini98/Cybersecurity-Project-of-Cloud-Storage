@@ -151,11 +151,89 @@ struct login_bootstrap_pkt {
 
 # define BOOTSTRAP_UPLOAD           5
 struct bootstrap_upload {
-    uint8_t code;
+    uint16_t code;
+    uint16_t filename_len;
     string filename;
-    bool response;      //True: upload allowed  False: upload not allowed
+    uint16_t response;      //True: upload allowed  False: upload not allowed
     uint32_t counter;
-    uintmax_t size;
+    uint32_t size;
+
+    void* serialize_message(int& len){
+        uint8_t* serialized_pkt = nullptr;
+        int pointer_counter = 0; 
+
+        len = (strlen(filename.c_str()) + sizeof(code) + sizeof(filename_len) + sizeof(response) + sizeof(counter) + sizeof(size));
+
+        serialized_pkt = (uint8_t*) malloc(len);
+        if (!serialized_pkt){
+            cerr << "serialized packet malloc failed" << endl;
+            return nullptr;
+        }
+        
+        uint16_t certified_code = htons(code);
+        filename_len = filename.length();
+        uint16_t certified_filename_len = htons(filename_len);
+        uint32_t certified_counter = htonl(counter);
+        uint32_t certified_size = htonl(size);
+        uint16_t certified_response = htons(response);
+
+        // copy of the code
+        memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
+        pointer_counter += sizeof(code);
+        //adding in append the others parameters
+        memcpy(serialized_pkt + pointer_counter, &certified_filename_len, sizeof(certified_filename_len));
+        pointer_counter += sizeof(filename_len);
+
+        uint8_t * filename_certified = (uint8_t *) filename.c_str();
+        memcpy (serialized_pkt + pointer_counter, filename_certified, filename_len);
+        pointer_counter += filename_len;
+
+        memcpy(serialized_pkt + pointer_counter, &certified_response, sizeof(certified_response));
+        pointer_counter += sizeof(certified_response);
+
+        memcpy(serialized_pkt + pointer_counter, &certified_counter, sizeof(certified_counter));
+        pointer_counter += sizeof(certified_counter);
+
+        memcpy(serialized_pkt + pointer_counter, &certified_size, sizeof(certified_size));
+        pointer_counter += sizeof(certified_size);
+
+        return serialized_pkt;
+
+    }
+
+    void deserialize_message(uint8_t* serialized_pkt){
+        int pointer_counter = 0;
+
+        // copy of the code
+        memcpy (&code, serialized_pkt, sizeof(code));
+        code = ntohs(code);
+        pointer_counter += sizeof(code);
+
+        // copy filename_len
+        memcpy(&filename_len, serialized_pkt + pointer_counter, sizeof(filename_len));
+        filename_len = ntohs(filename_len);
+        pointer_counter += sizeof(filename_len);
+
+        // copy of the filename 
+        filename.assign((char *) (serialized_pkt + pointer_counter), filename_len);
+        pointer_counter += filename_len;
+
+        // copy of the response
+        memcpy (&response, serialized_pkt + pointer_counter, sizeof(response));
+        response  = ntohs(response);
+        pointer_counter += sizeof(response);
+
+        // copy of the counter
+        memcpy (&counter, serialized_pkt + pointer_counter, sizeof(counter));
+        counter = ntohl(counter);
+        pointer_counter += sizeof(counter);
+
+        //copy of the size
+        memcpy (&size, serialized_pkt + pointer_counter, sizeof(size));
+        size = ntohl(size);
+        pointer_counter += sizeof(size);
+    
+    }
     
 };
 
@@ -170,11 +248,70 @@ struct file_upload {
 
 # define BOOTSTRAP_DOWNLOAD         10
 struct bootstrap_download {
-    uint8_t code;
+    uint16_t code;
+    uint16_t filename_len;
     string filename;
-    bool response;      //True: upload allowed  False: upload not allowed
     uint32_t counter;
-    uintmax_t size;
+
+    void* serialize_message(int& len){
+        uint8_t* serialized_pkt = nullptr;
+        int pointer_counter = 0; 
+
+        len = (strlen(filename.c_str()) + sizeof(code) + sizeof(filename_len) + sizeof(counter));
+
+        serialized_pkt = (uint8_t*) malloc(len);
+        if (!serialized_pkt){
+            cerr << "serialized packet malloc failed" << endl;
+            return nullptr;
+        }
+        
+        uint16_t certified_code = htons(code);
+        filename_len = filename.length();
+        uint16_t certified_filename_len = htons(filename_len);
+        uint32_t certified_counter = htonl(counter);
+
+        // copy of the code
+        memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
+        pointer_counter += sizeof(code);
+
+        //adding in append the others parameters
+        memcpy(serialized_pkt + pointer_counter, &certified_filename_len, sizeof(certified_filename_len));
+        pointer_counter += sizeof(filename_len);
+
+        uint8_t * filename_certified = (uint8_t *) filename.c_str();
+        memcpy (serialized_pkt + pointer_counter, filename_certified, filename_len);
+        pointer_counter += filename_len;
+
+        memcpy(serialized_pkt + pointer_counter, &certified_counter, sizeof(certified_counter));
+        pointer_counter += sizeof(certified_counter);
+
+        return serialized_pkt;
+
+    }
+
+    void deserialize_message(uint8_t* serialized_pkt){
+        int pointer_counter = 0;
+
+        // copy of the code
+        memcpy (&code, serialized_pkt, sizeof(code));
+        code = ntohs(code);
+        pointer_counter += sizeof(code);
+
+        // copy filename_len
+        memcpy(&filename_len, serialized_pkt + pointer_counter, sizeof(filename_len));
+        filename_len = ntohs(filename_len);
+        pointer_counter += sizeof(filename_len);
+
+        // copy of the filename 
+        filename.assign((char *) (serialized_pkt + pointer_counter), filename_len);
+        pointer_counter += filename_len;
+
+        // copy of the counter
+        memcpy (&counter, serialized_pkt + pointer_counter, sizeof(counter));
+        counter = ntohl(counter);
+        pointer_counter += sizeof(counter);
+    
+    }
     
 };
 
