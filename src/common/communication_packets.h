@@ -149,9 +149,18 @@ struct login_bootstrap_pkt {
     }
 };
 
+/*********************************************************************************************************************************/
+
 # define BOOTSTRAP_UPLOAD           5
 struct bootstrap_upload {
+    //Send through the net
     uint16_t code;
+    uint8_t* iv;
+    uint8_t* ciphertext;
+    uint32_t cipherlen;
+    uint8_t* HMAC;
+
+    //Filled after deserialization
     uint16_t filename_len;
     string filename;
     uint16_t response;      //True: upload allowed  False: upload not allowed
@@ -237,6 +246,8 @@ struct bootstrap_upload {
     
 };
 
+/*********************************************************************************************************************************/
+
 # define FILE_UPLOAD                6
 struct file_upload {
     uint8_t code;
@@ -245,6 +256,8 @@ struct file_upload {
     uint32_t counter;
     
 };
+
+/*********************************************************************************************************************************/
 
 # define BOOTSTRAP_DOWNLOAD         10
 struct bootstrap_download {
@@ -314,6 +327,8 @@ struct bootstrap_download {
     }
     
 };
+
+/*********************************************************************************************************************************/
 
 # define LOGIN_REFUSE_CONNECTION 2
 // sent in clear
