@@ -66,5 +66,5 @@ class Client{
     uint32_t file_exists_to_download(string filename, string username);
 
     // packets methods
-    int send_login_boostrap();
+    int send_login_bootstrap(login_bootstrap_pkt& pkt);
 };

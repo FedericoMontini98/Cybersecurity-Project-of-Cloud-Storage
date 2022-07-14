@@ -1,6 +1,72 @@
 #include "utility.h"
 
 
+// return dh_key if no error occurs, otherwise NULL
+EVP_PKEY* generate_dh_key(){
+	EVP_PKEY* dh_params = nullptr;
+    EVP_PKEY_CTX* dh_gen_ctx = nullptr;
+	EVP_PKEY* dh_key = nullptr;
+    
+    int ret;
+
+    try{
+        // Allocate p and g
+        dh_params = EVP_PKEY_new();
+        if (!dh_params){
+            cerr << "ERR: fail to generate new dh params" << endl;
+            throw 0;
+        }
+
+        // set default dh parameters for p and g
+        DH* default_params = DH_get_2048_224();
+        ret = EVP_PKEY_set1_DH(dh_params, default_params);
+        
+        // no longer need of this variable
+        DH_free(default_params);
+
+        if (ret != 1) {
+            cerr << "ERR: failed to load default params" << endl;
+            throw 1;
+        }
+
+        // g^a or g^b
+        dh_gen_ctx = EVP_PKEY_CTX_new(dh_params, nullptr);
+		if (!dh_gen_ctx) {
+            cerr << "ERR: failed to load define dh context" << endl;
+            throw 2;
+        }
+
+        ret = EVP_PKEY_keygen_init(dh_gen_ctx);
+		if (ret != 1) {
+            cerr << "ERR: failed dh keygen init" << endl;
+            throw 3;
+        }
+
+		ret = EVP_PKEY_keygen(dh_gen_ctx, &dh_key);
+		if (ret != 1){ 
+            cerr << "ERR: failed dh keygen" << endl;
+            throw 4;
+        }
+    }
+    catch (int error_code){
+
+        if (error_code > 0){
+            EVP_PKEY_free(dh_params);
+        }
+        
+        if (error_code > 1) {
+            EVP_PKEY_CTX_free(dh_gen_ctx);
+        }
+
+        return nullptr;
+    }
+
+    EVP_PKEY_CTX_free(dh_gen_ctx);
+	EVP_PKEY_free(dh_params);
+
+    return dh_key;
+}
+
 void* serialize_evp_pkey (EVP_PKEY* _key, uint32_t& _key_length){
 	int ret;
 	long ret_long;

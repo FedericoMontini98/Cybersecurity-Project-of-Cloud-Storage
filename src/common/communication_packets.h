@@ -345,6 +345,42 @@ struct login_refuse_connection_pkt {
 };
 
 # define LOGIN_SERVER_AUTHENTICATION 3
+
+struct login_server_authentication_pkt {
+	// clear fields
+    uint16_t code;
+	X509* server_cert;
+	uint8_t* iv_cbc;
+	
+	// encrypted string
+	uint32_t encrypted_signing_len;
+	char* encrypted_signing;
+	
+	// Decrypted fields, set in deserialization
+	uint32_t symmetric_key_param_len_server;
+    uint32_t hmac_key_param_len_server;
+	uint32_t symmetric_key_param_len;
+    uint32_t hmac_key_param_len;
+	
+	EVP_PKEY* symmetric_key_param_server;
+	EVP_PKEY* hmac_key_param_server;
+	EVP_PKEY* symmetric_key_param_client;
+	EVP_PKEY* hmac_key_param_client;
+
+    void serialize_message(){
+        code = htons(code);
+    }
+
+    bool deserialize_message(uint8_t* serialized_pkt){
+        code = ntohs(code);
+		
+		if (code != LOGIN_SERVER_AUTHENTICATION){
+			return false;
+		}
+    }
+};
+
+# define LOGIN_CLIENT_AUTHENTICATION 4
 // sent in clear
 struct login_server_authentication_pkt {
     uint16_t code;
