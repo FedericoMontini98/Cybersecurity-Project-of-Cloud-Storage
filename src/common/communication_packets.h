@@ -22,7 +22,7 @@ using namespace std;
 # define LOGIN_BOOTSTRAP 1
 
 struct login_bootstrap_pkt {
-    uint16_t code;
+    uint16_t code = LOGIN_BOOTSTRAP;
     uint16_t username_len;
     string username;
     uint32_t symmetric_key_param_len;
@@ -107,18 +107,13 @@ struct login_bootstrap_pkt {
 
     // function that deserialize a pkt from the network and set
     // the field of the struct
-    bool deserialize_message(uint8_t* serialized_pkt){
+    void deserialize_message(uint8_t* serialized_pkt){
         int pointer_counter = 0;
 
         // copy of the code
         memcpy (&code, serialized_pkt, sizeof(code));
         code = ntohs(code);
         pointer_counter += sizeof(code);
-		
-		// pkt type mismatch
-		if (code != LOGIN_BOOTSTRAP){
-			return false;
-		}
 
         // copy username_len
         memcpy(&username_len, serialized_pkt + pointer_counter, sizeof(username_len));
@@ -156,13 +151,7 @@ struct login_bootstrap_pkt {
 
 # define BOOTSTRAP_UPLOAD           5
 struct bootstrap_upload {
-
     uint16_t code;
-    uint8_t* iv;
-    uint8_t* HMAC;
-    uint8_t* ciphertext;
-
-    //To set during decryption
     uint16_t filename_len;
     string filename;
     uint16_t response;      //True: upload allowed  False: upload not allowed
@@ -251,106 +240,10 @@ struct bootstrap_upload {
 # define FILE_UPLOAD                6
 struct file_upload {
     uint8_t code;
-    uint8_t* ciphertext;
-    uint8_t* HMAC;
-
-    uint8_t* msg;
-    uint16_t response;      //True: upload allowed  False: upload not allowed
+    unsigned char* msg;
+    bool response;      //True: upload allowed  False: upload not allowed
     uint32_t counter;
     
-        // function that return a void* serialized_pkt that contains the serialized packet 
-    // ready to be sent on the network 
-    void* serialize_message(int& len){
-        uint8_t* serialized_pkt = nullptr;     // pointer to the serialized packet buffer to be returned
-        //int pointer_counter = 0;       // pointer for copy the field of the bootstrap packet into the buffer for the
-                                            // serialized packet pointed by serialized_pkt
-        
-        // get certified lengths and set username_len
-        //uint16_t certified_code = htons(code);
-        //username_len = username.length();
-
-        // total len of the serialized packet
-        /*len = ;*/
-        /*
-        // buffer allocation for the serialized packet
-        serialized_pkt = (uint8_t*) malloc(len);
-
-        if (!serialized_pkt){
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-        */
-        return serialized_pkt;
-    }
-
-    // function that deserialize a pkt from the network and set
-    // the field of the struct
-    bool deserialize_message(uint8_t* serialized_pkt){
-        //int pointer_counter = 0;
-        /*
-        // copy of the code
-        memcpy (&code, serialized_pkt, sizeof(code));
-        code = ntohs(code);
-        pointer_counter += sizeof(code);
-		
-		// pkt type mismatch
-		if (code != FILE_UPLOAD){
-			return false;
-		}
-        */
-       return true;
-    }
-};
-
-# define UPLOAD_END                 7
-struct upload_end{
-    uint8_t code;
-    uint8_t* ciphertext;
-    uint8_t* HMAC;
-
-    uint16_t response;
-    uint32_t counter;
-
-        // function that return a void* serialized_pkt that contains the serialized packet 
-    // ready to be sent on the network 
-    void* serialize_message(int& len){
-        uint8_t* serialized_pkt = nullptr;     // pointer to the serialized packet buffer to be returned
-        //int pointer_counter = 0;       // pointer for copy the field of the bootstrap packet into the buffer for the
-
-        // total len of the serialized packet
-        /*len =   ;*/
-
-        // buffer allocation for the serialized packet
-        serialized_pkt = (uint8_t*) malloc(len);
-
-        /*if (!serialized_pkt){
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-
-        // copy of all the field of the bootstrap packet into the serialized packet buffer
-
-        */
-        return serialized_pkt;
-    }
-
-    // function that deserialize a pkt from the network and set
-    // the field of the struct
-    bool deserialize_message(uint8_t* serialized_pkt){
-        /*int pointer_counter = 0;
-
-        // copy of the code
-        memcpy (&code, serialized_pkt, sizeof(code));
-        code = ntohs(code);
-        pointer_counter += sizeof(code);
-		
-		// pkt type mismatch
-		if (code != UPLOAD_END){
-			return false;
-		}*/
-        return true;
-        
-    }
 };
 
 # define BOOTSTRAP_DOWNLOAD         10
@@ -423,7 +316,7 @@ struct bootstrap_download {
 };
 
 # define LOGIN_REFUSE_CONNECTION 2
-
+// sent in clear
 struct login_refuse_connection_pkt {
     uint16_t code;
 
@@ -431,57 +324,15 @@ struct login_refuse_connection_pkt {
         code= htons(code);
     }
 
-    bool deserialize_message(){
+    void deserialize_message(){
         code= ntohs(code);
-		
-		if (code != LOGIN_REFUSE_CONNECTION){
-			return false;
-		}
     }
 };
 
 # define LOGIN_SERVER_AUTHENTICATION 3
-
-struct login_server_authentication_pkt {
-	// clear fields
-    uint16_t code;
-	X509* server_cert;
-	uint8_t* iv_cbc;
-	
-	// encrypted string
-	uint32_t encrypted_signing_len;
-	char* encrypted_signing;
-	
-	// Decrypted fields, set in deserialization
-	uint32_t symmetric_key_param_len_server;
-    uint32_t hmac_key_param_len_server;
-	uint32_t symmetric_key_param_len;
-    uint32_t hmac_key_param_len;
-	
-	EVP_PKEY* symmetric_key_param_server;
-	EVP_PKEY* symmetric_key_param;
-	EVP_PKEY* hmac_key_param_server;
-	EVP_PKEY* hmac_key_param;
-
-    void serialize_message(){
-        code = htons(code);
-    }
-
-    bool deserialize_message(uint8_t* serialized_pkt){
-        code = ntohs(code);
-		
-		if (code != LOGIN_SERVER_AUTHENTICATION){
-			return false;
-		}
-    }
-    return true;
-};
-
-# define LOGIN_CLIENT_AUTHENTICATION 4
 // sent in clear
-struct login_client_authentication_pkt {
+struct login_server_authentication_pkt {
     uint16_t code;
-	
 
     void serialize_message(){
         code = htons(code);
@@ -492,4 +343,17 @@ struct login_client_authentication_pkt {
     }
 };
 
+# define LOGIN_CLIENT_AUTHENTICATION 4
+// sent in clear
+struct login_client_authentication_pkt {
+    uint16_t code;
+
+    void serialize_message(){
+        code = htons(code);
+    }
+
+    void deserialize_message(){
+        code = ntohs(code);
+    }
+};
 

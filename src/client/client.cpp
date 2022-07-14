@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <vector>
 #include "client.h"
-#include "./../common/hmac/hmac_util.h"
 #include "./../common/utility.h"
 #include <sys/stat.h>
 #include <sstream>
@@ -532,12 +531,9 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len,
 
 // sent packet [username | sts_key_param | hmac_key_param]
 //MISS CONTROLS AND FREES
-int Client::send_login_boostrap(login_bootstrap_pkt& pkt){
-	
-    // initialize to 0 the pack
-    memset(&pkt, 0, sizeof(pkt));
-	
-	// lens will be automatically set after sending
+int Client::send_login_boostrap(){
+    login_bootstrap_pkt pkt;
+
     pkt.code = LOGIN_BOOTSTRAP;
     pkt.username = username;
     pkt.symmetric_key_param = generate_sts_key_param();
@@ -553,6 +549,10 @@ int Client::send_login_boostrap(login_bootstrap_pkt& pkt){
         return -1;
     }
 
+    // handle response
+
+    // if all is ok save the 2 parameters on the class field
+
     return 0;
     
 }
@@ -560,11 +560,67 @@ int Client::send_login_boostrap(login_bootstrap_pkt& pkt){
 
 
 // generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
-int Client::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen){
-	
-	// hmac_util.cpp
-	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, FILE_FRAGMENTS_SIZE);
+int Client::generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, int msg_len, unsigned char*& digest, unsigned*& digestlen){
+    int ret;
+    EVP_MD_CTX* ctx;
 
+    if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
+        cerr << "message length is not allowed" << endl;
+        return -1;
+    }
+
+    try{
+        digest = (unsigned char*) malloc(EVP_MD_size(hmac_type));
+        if (!digest){
+            cerr << "malloc of digest failed" << endl;
+            throw 1;
+        }
+
+        ctx = EVP_MD_CTX_new();
+
+        if (!ctx){
+            cerr << "context definition failed" << endl;
+            throw 2;
+        }
+
+        ret = EVP_DigestInit(ctx, hmac_type);
+
+        if (ret != 1) {
+			cerr << "failed to initialize digest creation" << endl;
+			ERR_print_errors_fp(stderr);
+			throw 3;
+		}
+
+        ret = EVP_DigestUpdate(ctx, (unsigned char*)msg, sizeof(msg)); //try or put it in input function
+
+        if (ret != 1) {
+            cerr << "failed to update digest " << endl;
+			ERR_print_errors_fp(stderr);
+			throw 4;
+        }
+
+        ret = EVP_DigestFinal(ctx, digest, digestlen);
+
+        if (ret != 1) {
+            cerr << "failed to finalize digest " << endl;
+			ERR_print_errors_fp(stderr);
+			throw 5;
+        }
+
+    }
+    catch (int error_code){
+
+        free(digest);
+        
+        if (error_code > 1){
+            EVP_MD_CTX_free(ctx);
+        }
+
+        return -1;
+
+    }
+
+    return 0;
 }
 
 // generate the sts key parameter g**a (diffie-hellman) for the session key establishment
@@ -652,13 +708,6 @@ bool Client::init_socket(){
 
 bool Client::init_session(){
     int ret;
-	login_bootstrap_pkt bootstrap_pkt;
-	login_server_authentication_pkt server_auth_pkt; 
-	login_client_authentication_pkt client_auth_pkt;
-	
-	// receive buffer
-	unsigned char* receive_buffer;
-    uint32_t len;
     
     // initialize socket
     if (!init_socket()){
@@ -674,51 +723,18 @@ bool Client::init_session(){
 	}
 
     // send login bootstrap packet
-    if (send_login_boostrap(bootstrap_pkt) < 0){ 
-        cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
+    if (send_login_boostrap() < 0){
+        cerr << "something goes wrong in sending login bootstrap packet" << endl;
         return false;
     }
-	
-	// receive login_server_authentication_pkt
-	while (true){
-	
-		// receive message
-		if (receive_message(receive_buffer, len) < 0){
-			cerr << "ERR: some error in receiving login_server_authentication_pkt" << endl;
-			free(receive_buffer);
-			continue;
-		}
-		
-		// check if it is consistent with server_auth_pkt
-		if (!server_auth_pkt.deserialize_message(receive_buffer)){
-			cerr << "ERR: some error in deserialize server_auth_pkt" << endl;
-			free(receive_buffer);
-			continue;
-		}
-		
-		// correct packet
-		free(receive_buffer);
-		break;
-	}
-	
-	// verify the server certificate and extract server's public key
-	
-	// derive symmetric key and hash it using SHA-256
-	
-	// decrypt the signed part using IV
-	
-	// verify the signature using server's public key
-	
-	// verify freshness on g^a
-	
-	// derive HMAC key and hash it using SHA-256
-	
-	// delete a,c (client parameters)
-	
-	// send LOGIN_CLIENT_AUTHENTICATION
-	
-	
-	
+
+    unsigned char* receive_buffer;
+    uint32_t len;
+    // receive response
+    if (receive_message(receive_buffer, len) < 0){
+        cerr << "ERR: some error in receiving bootstrap login response occurred" << endl;
+        return -1;
+    }
 
     return true;
 }
@@ -1137,8 +1153,8 @@ int Client::run(){
     recv (session_socket, send_buffer, 5, 0);
   
 }*/
-
-/*int Client::run(){
+/*
+int Client::run(){
     cout << "RUN" << endl;
 
     int ret;
@@ -1165,8 +1181,7 @@ int Client::run(){
     void* send_buffer = pkt.serialize_message(len);
     
     send_message(send_buffer, len);
+    return 0;
 }*/
-
-
 
 

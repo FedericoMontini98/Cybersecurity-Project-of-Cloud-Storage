@@ -4,22 +4,18 @@ CFLAGS = -c -Wall
 
 all: client.exe
 
-client.exe: main.o client.o utility.o hmac_util.o
+client.exe: main.o client.o utility.o
 
-	$(CC) main.o client.o utility.o hmac_util.o $(LFLAGS) -o client.exe 
+	$(CC) main.o client.o utility.o $(LFLAGS) -o client.exe 
 	#$(CC) $(LFLAGS) main.o client.o -o client.exe
 
 client.o: client.cpp
 
 	$(CC) $(CFLAGS) client.cpp
 
-utility.o: ./../common/utility.cpp 
+utility.o: ./../common/utility.cpp ./../common/utility.h
 	
 	$(CC) $(CFLAGS) ./../common/utility.cpp
-	
-hmac_util.o: ./../common/hmac/hmac_util.cpp
-
-	$(CC) $(CFLAGS) ./../common/hmac/hmac_util.cpp
 
 main.o: main.cpp
 
