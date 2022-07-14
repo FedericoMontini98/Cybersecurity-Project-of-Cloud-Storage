@@ -200,9 +200,9 @@ struct login_server_authentication_pkt {
     uint32_t hmac_key_param_len;
 	
 	EVP_PKEY* symmetric_key_param_server;
-	EVP_PKEY* symmetric_key_param;
 	EVP_PKEY* hmac_key_param_server;
-	EVP_PKEY* hmac_key_param;
+	EVP_PKEY* symmetric_key_param_client;
+	EVP_PKEY* hmac_key_param_client;
 
     void serialize_message(){
         code = htons(code);

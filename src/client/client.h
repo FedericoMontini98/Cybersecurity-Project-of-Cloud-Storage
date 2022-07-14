@@ -63,5 +63,5 @@ class Client{
     bool file_exists(string filename, string username);
 
     // packets methods
-    int send_login_boostrap();
+    int send_login_bootstrap(login_bootstrap_pkt& pkt);
 };

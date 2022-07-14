@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include "client.h"
-#include "./../common/hmac/hmac_util.h"
+#include "./../common/hashing/hashing_util.h"
 #include "./../common/utility.h"
 
 
@@ -507,7 +507,7 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len)
 
 // sent packet [username | sts_key_param | hmac_key_param]
 //MISS CONTROLS AND FREES
-int Client::send_login_boostrap(login_bootstrap_pkt& pkt){
+int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
 	
     // initialize to 0 the pack
     memset(&pkt, 0, sizeof(pkt));
@@ -515,10 +515,18 @@ int Client::send_login_boostrap(login_bootstrap_pkt& pkt){
 	// lens will be automatically set after sending
     pkt.code = LOGIN_BOOTSTRAP;
     pkt.username = username;
+	
+	// generate dh keys
     pkt.symmetric_key_param = generate_sts_key_param();
+	
+	if (pkt.symmetric_key_param == nullptr){
+		cerr << "ERR: failed to generate session keys parameters" << endl;
+        return false;
+	}
+	
     pkt.hmac_key_param = generate_sts_key_param();
 
-    if (!pkt.hmac_key_param || !pkt.symmetric_key_param){
+    if (pkt.hmac_key_param == nullptr){
         cerr << "ERR: failed to generate session keys parameters" << endl;
         return false;
     }
@@ -542,70 +550,11 @@ int Client::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& di
 
 }
 
-// generate the sts key parameter g**a (diffie-hellman) for the session key establishment
+// generate the sts key parameter, null if an error occurs
 EVP_PKEY* Client::generate_sts_key_param(){
-    EVP_PKEY* dh_params = nullptr;
-    EVP_PKEY_CTX* dh_gen_ctx = nullptr;
-    EVP_PKEY* dh_key = nullptr;
-    int ret;
-
-    try{
-        // Allocate p and g
-        dh_params = EVP_PKEY_new();
-        if (!dh_params){
-            cerr << "ERR: fail to generate new dh params" << endl;
-            throw 0;
-        }
-
-        // set default dh parameters for p and g
-        DH* default_params = DH_get_2048_224();
-        ret = EVP_PKEY_set1_DH(dh_params, default_params);
-        
-        // no longer need of this variable
-        DH_free(default_params);
-
-        if (ret != 1) {
-            cerr << "ERR: failed to load default params" << endl;
-            throw 1;
-        }
-
-        // g^a or g^b
-        dh_gen_ctx = EVP_PKEY_CTX_new(dh_params, nullptr);
-		if (!dh_gen_ctx) {
-            cerr << "ERR: failed to load define dh context" << endl;
-            throw 2;
-        }
-
-        ret = EVP_PKEY_keygen_init(dh_gen_ctx);
-		if (ret != 1) {
-            cerr << "ERR: failed dh keygen init" << endl;
-            throw 3;
-        }
-
-		ret = EVP_PKEY_keygen(dh_gen_ctx, &dh_key);
-		if (ret != 1){ 
-            cerr << "ERR: failed dh keygen" << endl;
-            throw 4;
-        }
-    }
-    catch (int error_code){
-
-        if (error_code > 0){
-            EVP_PKEY_free(dh_params);
-        }
-        
-        if (error_code > 1) {
-            EVP_PKEY_CTX_free(dh_gen_ctx);
-        }
-
-        return nullptr;
-    }
-
-    EVP_PKEY_CTX_free(dh_gen_ctx);
-	EVP_PKEY_free(dh_params);
-
-    return dh_key;
-
+	
+	// utility.cpp
+	return generate_dh_key();
 }
 
 
@@ -649,7 +598,7 @@ bool Client::init_session(){
 	}
 
     // send login bootstrap packet
-    if (send_login_bootstrap(pkt) < 0){
+    if (send_login_bootstrap(bootstrap_pkt) < 0){
         cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
         return false;
     }
@@ -665,7 +614,7 @@ bool Client::init_session(){
 		}
 		
 		// check if it is consistent with server_auth_pkt
-		if (!server_auth_pkt.deserialize(receive_buffer)){
+		if (!server_auth_pkt.deserialize_message(receive_buffer)){
 			cerr << "ERR: some error in deserialize server_auth_pkt" << endl;
 			free(receive_buffer);
 			continue;
@@ -693,7 +642,9 @@ bool Client::init_session(){
 	// send LOGIN_CLIENT_AUTHENTICATION
 	
 	
-	
+	// free dh parameters
+	EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+	EVP_PKEY_free(bootstrap_pkt.hmac_key_param);
 
     return true;
 }
