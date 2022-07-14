@@ -47,6 +47,7 @@ class Worker {
     ~Worker();
     int receive_message();
     int handle_command(unsigned char* cmd);
+	bool check_username(string username);
 
     void run();
 

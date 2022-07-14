@@ -1,6 +1,5 @@
 #include "utility.h"
 
-
 void* serialize_evp_pkey (EVP_PKEY* _key, uint32_t& _key_length){
 	int ret;
 	long ret_long;
