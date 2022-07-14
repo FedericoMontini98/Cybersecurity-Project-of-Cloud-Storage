@@ -991,14 +991,12 @@ int Client::download(string username){
     //send_message((void*)hmac, /*hmacsize*/)
 
     //ret = receive_message()
-    free(iv)
+    free(iv);
     return 0;
 }
 
 // RUN
 int Client::run(){
-    cout << "RUN" <<endl;
-
     try {
 
         // establish session and HMAC key
@@ -1010,7 +1008,8 @@ int Client::run(){
         cout << "session keys has been established correctly " << endl;
     }
     catch (int error_code) {
-
+        cout<<"Error during session initialization, exited with code: "<<error_code<<endl;
+        return -1;
     }
 
     cout<<"======================================="<<endl;
