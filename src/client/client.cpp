@@ -53,7 +53,7 @@ bool Client::extract_private_key(string _username, string password){
     return true;
 }
 
-// send a message through socket and free msg
+// send a message through socket
 bool Client::send_message(void* msg, const uint32_t len){
     
     ssize_t ret;
@@ -286,19 +286,18 @@ bool Client::generate_iv (const EVP_CIPHER* cipher){
 // HANDLE FREE ONLY ON ERROR
 int Client::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, 
 int& cipherlen){
-
-    int outlen;
+	int outlen;
     int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
     int ret;
 
     EVP_CIPHER_CTX* ctx;
-
-    if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
+	
+	if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
         cerr << "message length is not allowed" << endl;
         return -1;
     }
-
-    try {
+	
+	try {
          // buffer for the ciphertext + padding
         ciphertext = (unsigned char*)malloc(msg_len + block_size);
 		if (!ciphertext) {
@@ -372,22 +371,23 @@ int& cipherlen){
     }
 
     return 0;
+    
 }
 
 // function to decrypt fragments
 // this function will set plaintext and plainlen arguments
 int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen){
-    int outlen;
+	int outlen;
     int ret;
 
     EVP_CIPHER_CTX* ctx;
-
+	
     if (cipherlen == 0 || cipherlen > FILE_FRAGMENTS_SIZE) {
-        cerr << "ERR: input cipher fragment exceeds the maximum size" << endl;
+        cerr << "ERR: input cipher len not allowed" << endl;
         return -1;
     }
-
-    //error if iv is not set
+	
+	//error if iv is not set
     if (!iv){
         cerr << "ERR: missing iv for decryption" << endl;
         return -1;
@@ -460,7 +460,6 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
     }
 
     return 0;
-
 }
 
 // encrypt using cbc_encrypt but for pieces of file

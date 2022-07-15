@@ -1,6 +1,5 @@
 #include "utility.h"
 
-
 // return dh_key if no error occurs, otherwise NULL
 EVP_PKEY* generate_dh_key(){
 	EVP_PKEY* dh_params = nullptr;
@@ -67,6 +66,7 @@ EVP_PKEY* generate_dh_key(){
     return dh_key;
 }
 
+// serialize key EVP_PKEY
 void* serialize_evp_pkey (EVP_PKEY* _key, uint32_t& _key_length){
 	int ret;
 	long ret_long;
@@ -113,12 +113,12 @@ void* serialize_evp_pkey (EVP_PKEY* _key, uint32_t& _key_length){
 		}
 
 	} 
-    catch (int e) {
-		if (e >= 2) {
+    catch (int error_code) {
+		if (error_code >= 2) {
             // free the allocated buffer for the key
 			free(key_buffer);
 		}
-		if (e >= 1) {
+		if (error_code >= 1) {
             // free the allocated space for bio
 			BIO_free(bio);
 		}
@@ -130,6 +130,7 @@ void* serialize_evp_pkey (EVP_PKEY* _key, uint32_t& _key_length){
 	return key_buffer;
 }
 
+// deserialize key EVP_PKEY
 EVP_PKEY* deserialize_evp_pkey (const void* _key_buffer, const uint32_t _key_length){
 	int ret;
 	BIO* bio;
@@ -169,6 +170,111 @@ EVP_PKEY* deserialize_evp_pkey (const void* _key_buffer, const uint32_t _key_len
 	BIO_free(bio);
 
 	return key;
+}
+
+// serialize certificate X509
+void* serialize_certificate_X509(X509* cert, uint32_t& cert_length){
+	int ret;
+	long ret_long;
+
+	BIO* bio = nullptr;
+	void* cert_buffer = nullptr;
+
+	try {
+		// Allocate an instance of the BIO structure for serialization
+		bio = BIO_new(BIO_s_mem());
+		if (!bio) {
+			cerr << "BIO_new failed" << endl;
+			throw 0;
+		}
+
+		// Serialize certificate into PEM format and write it in the BIO
+		ret = PEM_write_bio_X509(bio, cert);
+		if (ret != 1) {
+			cerr << "PEM_write_bio_X509 failed and returned: " << ret << endl;
+			throw 1;
+		}
+
+		// Set of the pointer cert_buffer to the buffer of the memory bio and return its size
+		ret_long = BIO_get_mem_data(bio, &cert_buffer);
+		if (ret_long <= 0) {
+			cerr << "BIO_get_mem_data failed and returned: " << ret_long << endl;
+			throw 1;
+		}
+		cert_length = (uint32_t)ret_long;
+		
+		// Allocate memory for the serialized certificate
+		cert_buffer = malloc(cert_length);
+		if (!cert_buffer) {
+			cerr << "malloc of the buffer for serialized cert failed" << endl;
+			throw 1;
+		}
+
+		// Read data from bio and extract serialized certificate
+		ret = BIO_read(bio, cert_buffer, cert_length);
+		if (ret < 1) {
+			cerr << "BIO_read failed and returned: " << ret << endl;
+			throw 2;
+		}
+
+	} 
+    catch (int error_code) {
+		if (error_code >= 2) {
+            // free the allocated buffer for the certificate
+			free(cert_buffer);
+		}
+		if (error_code >= 1) {
+            // free the allocated space for bio
+			BIO_free(bio);
+		}
+		return nullptr;
+	}
+
+	BIO_free(bio);
+
+	return cert_buffer;
+}
+
+// deserialize certificate X509
+X509* deserialize_certificate_X509(const void* cert_buffer, const uint32_t cert_length){
+	int ret;
+	BIO* bio;
+	X509* cert;
+
+	try {
+		// Allocate an instance of the BIO structure for serialization
+		bio = BIO_new(BIO_s_mem());
+		if (!bio) {
+			cerr << "BIO_new failed" << endl;
+			throw 0;
+		}
+		
+		// Write serialized the key from the buffer in bio
+		ret = BIO_write(bio, cert_buffer, cert_length);
+		if (ret <= 0) {
+			cerr << "BIO_write failed and returned: " << ret << endl;
+			throw 1;
+		}
+		
+		// Reads a certificate written in PEM format from the bio and deserialize it
+		cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
+		if (!cert) {
+			cerr << "PEM_read_bio_X509 failed" << endl;
+			throw 1;
+		}
+		
+	} 
+    catch (int error_code) {
+        // free the allocated space for bio
+		if (error_code >= 1) {
+			BIO_free(bio);
+		}
+		return nullptr;
+	}
+
+	BIO_free(bio);
+
+	return cert;
 }
 
 // sign a message using private key prvkey
@@ -279,3 +385,4 @@ int verify_signature(EVP_PKEY* pubkey, const unsigned char* signature, const siz
 
 	return 0;
 }
+
