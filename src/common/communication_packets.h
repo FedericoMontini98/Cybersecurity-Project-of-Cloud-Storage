@@ -273,26 +273,26 @@ struct bootstrap_upload
         int pointer_counter = 0;
 
         // copy filename_len
-        memcpy(&filename_len, serialized_pkt + pointer_counter, sizeof(filename_len));
+        memcpy(&filename_len, serialized_decrypted_pkt + pointer_counter, sizeof(filename_len));
         filename_len = ntohs(filename_len);
         pointer_counter += sizeof(filename_len);
 
         // copy of the filename
-        filename.assign((char *)(serialized_pkt + pointer_counter), filename_len);
+        filename.assign((char *)(serialized_decrypted_pkt + pointer_counter), filename_len);
         pointer_counter += filename_len;
 
         // copy of the response
-        memcpy(&response, serialized_pkt + pointer_counter, sizeof(response));
+        memcpy(&response, serialized_decrypted_pkt + pointer_counter, sizeof(response));
         response = ntohs(response);
         pointer_counter += sizeof(response);
 
         // copy of the counter
-        memcpy(&counter, serialized_pkt + pointer_counter, sizeof(counter));
+        memcpy(&counter, serialized_decrypted_pkt + pointer_counter, sizeof(counter));
         counter = ntohl(counter);
         pointer_counter += sizeof(counter);
 
         // copy of the size
-        memcpy(&size, serialized_pkt + pointer_counter, sizeof(size));
+        memcpy(&size, serialized_decrypted_pkt + pointer_counter, sizeof(size));
         size = ntohl(size);
         pointer_counter += sizeof(size);
 
@@ -479,39 +479,5 @@ struct login_server_authentication_pkt
         {
             return false;
         }
-    }
-};
-
-#define LOGIN_CLIENT_AUTHENTICATION 4
-// sent in clear
-struct login_server_authentication_pkt
-{
-    uint16_t code;
-
-    void serialize_message()
-    {
-        code = htons(code);
-    }
-
-    void deserialize_message()
-    {
-        code = ntohs(code);
-    }
-};
-
-#define LOGIN_CLIENT_AUTHENTICATION 4
-// sent in clear
-struct login_client_authentication_pkt
-{
-    uint16_t code;
-
-    void serialize_message()
-    {
-        code = htons(code);
-    }
-
-    void deserialize_message()
-    {
-        code = ntohs(code);
     }
 };
