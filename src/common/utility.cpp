@@ -1,6 +1,10 @@
 #include "utility.h"
 
-// return dh_key if no error occurs, otherwise NULL
+/**
+ *  Generate the client or the server part of the shared session key, i.e. g**a for the DH protocol
+ * 
+ * @return the genereted key on success or NULL in the other cases
+ */
 EVP_PKEY* generate_dh_key(){
 	EVP_PKEY* dh_params = nullptr;
     EVP_PKEY_CTX* dh_gen_ctx = nullptr;
@@ -64,6 +68,76 @@ EVP_PKEY* generate_dh_key(){
 	EVP_PKEY_free(dh_params);
 
     return dh_key;
+}
+
+/**
+ * This function derive a shared session key using the Diffie-Hellman exchange method
+ * The shared session key obtained by the merge of the client and the server's keys is then 
+ * hashed with SHA-256, this function could be used to create the asimmetric key for the AES or
+ * the key for the HMAC
+ * 
+ * @param this_host_dh_key is the key genereted by the current host
+ * @param other_host_dh_key is the key genereted by the others hosts
+ * @return the session key on success or NULL in the other cases
+ */
+unsigned char* derive_share_secret(EVP_PKEY* this_host_dh_key, EVP_PKEY* other_host_dh_key){
+
+	int ret;
+	unsigned char* key = nullptr;
+
+	// Create a new context for deriving DH key
+	EVP_PKEY_CTX* key_ctx = EVP_PKEY_CTX_new(this_host_dh_key, nullptr);
+	if (!key_ctx) {
+		cerr << "ERR: failed to load define dh context of the current host" << endl;
+		return nullptr;
+	}
+
+	unsigned char* shared_secret = nullptr;
+	size_t secret_length = 0;
+
+	// Derive the shared secret between the two hosts
+	try {
+		ret = EVP_PKEY_derive_init(key_ctx);
+		if (ret != 1){
+			throw 0;
+		}
+		ret = EVP_PKEY_derive_set_peer(key_ctx, other_host_dh_key);
+		if (ret != 1){
+			throw 0;
+		}
+		ret = EVP_PKEY_derive(key_ctx, nullptr, &secret_length);
+		if (ret != 1){
+			throw 0;
+		} 
+		shared_secret = (unsigned char*)malloc(secret_length);
+		if (!shared_secret){
+			throw 1;
+		}
+			
+	} 
+	catch (int e) {
+		if (e == 1) {
+			cerr << "[derive_session_key]: allocation for shared secret failed" << endl;
+		}
+		else {
+			cerr << "[derive_session_key]: failed " <<endl;
+			ERR_print_errors_fp(stderr);
+		}
+
+		EVP_PKEY_CTX_free(key_ctx);
+		return nullptr;
+	}
+
+	ret = EVP_PKEY_derive(key_ctx, shared_secret, &secret_length);
+	EVP_PKEY_CTX_free(key_ctx);
+	if (ret != 1) { 
+		memset(shared_secret, 0, secret_length);
+		free(shared_secret);
+
+		return nullptr;
+	}
+
+	return shared_secret;
 }
 
 // serialize key EVP_PKEY

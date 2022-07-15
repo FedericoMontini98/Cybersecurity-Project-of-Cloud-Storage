@@ -3,8 +3,12 @@
 #include <arpa/inet.h>
 #include <openssl/rand.h>
 #include <thread>
+#include <fstream>
 #include <cstring>
+#include <string>
 #include <openssl/ssl.h>
+#include <vector>
+#include <string.h>
 #include "./../common/communication_packets.h"
 
 # define DEBUG true
