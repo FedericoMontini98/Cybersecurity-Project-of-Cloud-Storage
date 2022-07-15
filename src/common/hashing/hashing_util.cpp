@@ -143,6 +143,8 @@ unsigned char* key, uint32_t max_msg_size){
     return 0;
 }
 
+
+// hash symmetric key no hash and take a portion of the total
 int hash_symmetric_key(unsigned char*& symmetric_key, unsigned char* symmetric_key_no_hashed){
 	unsigned char* hash;
 	uint32_t len;
@@ -155,7 +157,7 @@ int hash_symmetric_key(unsigned char*& symmetric_key, unsigned char* symmetric_k
 		return ret;
 	}
 	
-	symmetric_key = (unsigned char*) malloc(128);
+	symmetric_key = (unsigned char*) malloc(128); // AES-128
 	
 	if (symmetric_key == nullptr){
 		cerr << "failed to malloc symmetric key" << endl;
@@ -165,9 +167,14 @@ int hash_symmetric_key(unsigned char*& symmetric_key, unsigned char* symmetric_k
 	// take a portion of the mac
 	memcpy(symmetric_key, hash, 128);
 	
+	// free hash
+	free(hash);
+	
 	return 0;
 }
 
+
+// hash hmac key no hash 
 int hash_hmac_key(unsigned char*& hmac_key, unsigned char* hmac_key_no_hashed){
 	unsigned char* hash;
 	uint32_t len;
@@ -189,6 +196,9 @@ int hash_hmac_key(unsigned char*& hmac_key, unsigned char* hmac_key_no_hashed){
 	
 	// take the total hash
 	memcpy(hmac_key, hash, 256);
+	
+	// free hash
+	free(hash);
 	
 	return 0;
 }
