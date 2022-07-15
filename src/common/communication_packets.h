@@ -297,6 +297,46 @@ struct bootstrap_upload
         pointer_counter += sizeof(size);
 
         return true;
+
+    }
+
+};
+
+/*********************************************************************************************************************************/
+
+# define LOGIN_AUTHENTICATION 3
+
+struct login_authentication_pkt {
+	// clear fields
+    uint16_t code;
+	X509* cert;
+	uint8_t* iv_cbc;
+	
+	// encrypted string
+	uint32_t encrypted_signing_len;
+	char* encrypted_signing;
+	
+	// Decrypted fields, set in deserialization
+	uint32_t symmetric_key_param_len_server;
+    uint32_t hmac_key_param_len_server;
+	uint32_t symmetric_key_param_len;
+    uint32_t hmac_key_param_len;
+	
+	EVP_PKEY* symmetric_key_param_server;
+	EVP_PKEY* hmac_key_param_server;
+	EVP_PKEY* symmetric_key_param_client;
+	EVP_PKEY* hmac_key_param_client;
+
+    void serialize_message(){
+        code = htons(code);
+    }
+
+    bool deserialize_message(uint8_t* serialized_pkt){
+        code = ntohs(code);
+		
+		if (code != LOGIN_AUTHENTICATION){
+			return false;
+		}
     }
 };
 

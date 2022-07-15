@@ -54,7 +54,7 @@ class Worker {
 	bool check_username(string username);
 	bool generate_iv (const EVP_CIPHER* cipher);
 	bool init_session();
-	int send_login_server_authentication(login_server_authentication_pkt& pkt, login_bootstrap_pkt bootstrap_pkt);
+	int send_login_server_authentication(login_authentication_pkt& pkt, login_bootstrap_pkt bootstrap_pkt);
 
     void run();
 

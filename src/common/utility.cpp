@@ -170,3 +170,112 @@ EVP_PKEY* deserialize_evp_pkey (const void* _key_buffer, const uint32_t _key_len
 
 	return key;
 }
+
+// sign a message using private key prvkey
+// DO NOT HANDLE FREE
+unsigned char* sign_message(EVP_PKEY* prvkey, const unsigned char* msg, const size_t msg_len, unsigned int& signature_len) {
+	int ret;
+	EVP_MD_CTX* ctx = nullptr;
+	unsigned char* signature = nullptr;
+	
+	if (!prvkey){
+		return nullptr;
+	}
+	
+	try {
+		
+		ctx = EVP_MD_CTX_new();
+		if (!ctx) {
+			cerr << "error in defining new context for signature" << endl;
+			throw 1;
+		}
+
+		ret = EVP_SignInit(ctx, EVP_sha256());
+		if (ret != 1) {
+			cerr << "sign init error" << endl;
+			throw 2;
+		}
+
+		ret = EVP_SignUpdate(ctx, msg, msg_len);
+		if (ret != 1) {
+			cerr << "sign update error" << endl;
+			throw 3;
+		}
+
+		signature_len = EVP_PKEY_size(prvkey);
+		signature = (unsigned char*)malloc(signature_len);
+		if (!signature) {
+			cerr << "error in signature malloc" << endl;
+			throw 4;
+		}
+
+		ret = EVP_SignFinal(ctx, signature, &signature_len, prvkey);
+		if (ret != 1) {
+			cerr << "sign final error" << endl;
+			throw 5;
+		}
+
+	} catch (int error_code) {
+		
+		EVP_MD_CTX_free(ctx);
+		
+		if (error_code >= 4) {
+			free(signature);
+		}
+		return nullptr;
+	}
+	
+	EVP_MD_CTX_free(ctx);
+	EVP_PKEY_free(prvkey);
+
+	return signature;
+}
+
+// verify signature with pubkey
+// DO NOT HANDLE FREE
+int verify_signature(EVP_PKEY* pubkey, const unsigned char* signature, const size_t signature_len, const unsigned char* cleartext, const size_t cleartext_len){
+	EVP_MD_CTX* ctx = nullptr;
+
+	int ret;
+	
+	if (pubkey == nullptr){
+		return -1;
+	}
+	
+	// verify signature
+	try {
+		ctx = EVP_MD_CTX_new();
+		if (!ctx) {
+			cerr << "error in defining new context for signature" << endl;
+			throw 1;
+		}
+
+		ret = EVP_VerifyInit(ctx, EVP_sha256());
+		if (ret != 1) {
+			cerr << "error in verify init for signature" << endl;
+			throw 2;
+		}
+
+		ret = EVP_VerifyUpdate(ctx, cleartext, cleartext_len);
+		if (ret != 1) {
+			cerr << "error in verify update for signature" << endl;
+			throw 3;
+		}
+		
+		ret = EVP_VerifyFinal(ctx, signature, signature_len, pubkey);
+		if (ret != 1) {
+			cerr << "error in verify final for signature" << endl;
+			throw 4;
+		}
+
+	} catch (int error_code) {
+		
+		EVP_MD_CTX_free(ctx);
+		return -1;
+	}
+
+	EVP_MD_CTX_free(ctx);
+	EVP_PKEY_free(pubkey);
+
+	return 0;
+}

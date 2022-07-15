@@ -661,6 +661,13 @@ bool Client::init_socket(){
 
 bool Client::init_session(){
     int ret;
+	login_bootstrap_pkt bootstrap_pkt;
+	login_authentication_pkt server_auth_pkt; 
+	login_authentication_pkt client_auth_pkt;
+	
+	// receive buffer
+	unsigned char* receive_buffer;
+    uint32_t len;
     
     // initialize socket
     if (!init_socket()){
