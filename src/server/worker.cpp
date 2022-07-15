@@ -170,31 +170,18 @@ bool Worker::check_username(string username){
 }
 
 // send the server authentication packet
-int Worker::send_login_server_authentication(login_server_authentication_pkt& pkt, login_bootstrap_pkt bootstrap_pkt){
+int Worker::send_login_server_authentication(login_authentication_pkt& pkt, login_bootstrap_pkt bootstrap_pkt){
 	// initialize to 0 the pack
     memset(&pkt, 0, sizeof(pkt));
 	
-	pkt.code = LOGIN_SERVER_AUTHENTICATION;
+	pkt.code = LOGIN_AUTHENTICATION;
 	
 	// load server certificate
-	pkt.server_cert = get_certificate();
+	pkt.cert = get_certificate();
 	
-	if (pkt.server_cert == nullptr){
+	if (pkt.cert == nullptr){
 		return -1;
 	}
-	
-	// generate_iv
-	/*generate_iv();
-	
-	if (iv == nullptr){
-		return -1;
-	}
-	
-	pkt.iv_cbc = iv;*/
-	
-	// set the dh sent by client
-	pkt.hmac_key_param_server = generate_sts_key_param();
-	pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
 	
 	// sign
 	
@@ -207,7 +194,7 @@ bool Worker::init_session(){
 	unsigned char* receive_buffer;
     uint32_t len;
 	login_bootstrap_pkt bootstrap_pkt;
-	login_server_authentication_pkt server_auth_pkt;
+	login_authentication_pkt server_auth_pkt;
 	unsigned char* symmetric_key_no_hashed;
 	unsigned char* hmac_key_no_hashed;
 	int ret;
@@ -234,7 +221,14 @@ bool Worker::init_session(){
 			cerr << "ERR: username "+bootstrap_pkt.username+ " is not registered" << endl;
 			free(receive_buffer);
 			continue;
-		}	
+		}
+		
+		// check if key params are valid
+		if (bootstrap_pkt.symmetric_key_param == nullptr || bootstrap_pkt.hmac_key_param == nullptr){
+			cerr << "ERR: one of the key params is not valid" << endl;
+			free(receive_buffer);
+			continue;
+		}
 		
 		// correct packet
 		free(receive_buffer);
@@ -254,6 +248,10 @@ bool Worker::init_session(){
 		return -1;
 	}
 	
+	// set the params sent by client
+	server_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
+	server_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
+	
 	// derive key using login_bootstrap_pkt.symmetric_key_param and hmac one
 	
 	// symmetric_key_no_hashed = // IMPLEMENT
@@ -261,7 +259,7 @@ bool Worker::init_session(){
 	// hmac_key_no_hashed = // IMPLEMENT
 	
 	// hash the keys
-	ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
+	/*ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
 	
 	if (ret != 0){
 		return ret;
@@ -271,7 +269,7 @@ bool Worker::init_session(){
 	
 	if (ret != 0){
 		return ret;
-	}
+	}*/
 	
 	// encrypt and send login_server_authentication_pkt (also generate iv)
 	send_login_server_authentication(server_auth_pkt, bootstrap_pkt);

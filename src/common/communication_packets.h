@@ -181,12 +181,12 @@ struct login_refuse_connection_pkt {
     }
 };
 
-# define LOGIN_SERVER_AUTHENTICATION 3
+# define LOGIN_AUTHENTICATION 3
 
-struct login_server_authentication_pkt {
+struct login_authentication_pkt {
 	// clear fields
     uint16_t code;
-	X509* server_cert;
+	X509* cert;
 	uint8_t* iv_cbc;
 	
 	// encrypted string
@@ -211,7 +211,7 @@ struct login_server_authentication_pkt {
     bool deserialize_message(uint8_t* serialized_pkt){
         code = ntohs(code);
 		
-		if (code != LOGIN_SERVER_AUTHENTICATION){
+		if (code != LOGIN_AUTHENTICATION){
 			return false;
 		}
     }

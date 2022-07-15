@@ -24,9 +24,9 @@ utility.o: ./../common/utility.cpp
 
 	$(CC) $(CFLAGS) ./../common/utility.cpp
 
-hashing_util.o: ./../common/hashing_util.cpp
+hashing_util.o: ./../common/hashing/hashing_util.cpp
 
-	$(CC) $(CFLAGS) ./../common/hashing_util.cpp
+	$(CC) $(CFLAGS) ./../common/hashing/hashing_util.cpp
 
 main.o: main.cpp
 

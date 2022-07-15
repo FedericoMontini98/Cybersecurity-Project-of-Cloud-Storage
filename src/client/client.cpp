@@ -577,8 +577,8 @@ bool Client::init_socket(){
 bool Client::init_session(){
     int ret;
 	login_bootstrap_pkt bootstrap_pkt;
-	login_server_authentication_pkt server_auth_pkt; 
-	login_client_authentication_pkt client_auth_pkt;
+	login_authentication_pkt server_auth_pkt; 
+	login_authentication_pkt client_auth_pkt;
 	
 	// receive buffer
 	unsigned char* receive_buffer;

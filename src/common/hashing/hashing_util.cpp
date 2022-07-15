@@ -54,7 +54,7 @@ int generate_SHA256_MAC (unsigned char* msg, size_t msg_len, unsigned char*& dig
         free(digest);
         
         if (error_code > 1){
-            HMAC_CTX_free(ctx);
+            EVP_MD_CTX_free(ctx);
         }
 
         return -1;
@@ -155,7 +155,7 @@ int hash_symmetric_key(unsigned char*& symmetric_key, unsigned char* symmetric_k
 		return ret;
 	}
 	
-	symmetric_key = malloc(128);
+	symmetric_key = (unsigned char*) malloc(128);
 	
 	if (symmetric_key == nullptr){
 		cerr << "failed to malloc symmetric key" << endl;
@@ -180,7 +180,7 @@ int hash_hmac_key(unsigned char*& hmac_key, unsigned char* hmac_key_no_hashed){
 		return ret;
 	}
 	
-	hmac_key = malloc(256);
+	hmac_key = (unsigned char*) malloc(256);
 	
 	if (hmac_key == nullptr){
 		cerr << "failed to malloc hmac key" << endl;
