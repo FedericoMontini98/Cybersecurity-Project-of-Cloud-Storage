@@ -76,7 +76,7 @@ bool Client::send_message(void* msg, const uint32_t len){
         cerr << "Error: message not sent" << endl;
         return false;
     }
-
+	
     return true;
 }
 
@@ -507,6 +507,8 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len)
 // sent packet [username | sts_key_param | hmac_key_param]
 //MISS CONTROLS AND FREES
 int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
+	unsigned char* send_buffer;
+	int len;
 	
     // initialize to 0 the pack
     memset(&pkt, 0, sizeof(pkt));
@@ -530,7 +532,14 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
         return false;
     }
 
-    if (!send_message(&pkt, sizeof(login_bootstrap_pkt))){
+	send_buffer = (unsigned char*) pkt.serialize_message(len);
+	
+	if (send_buffer == nullptr){
+		cerr << "ERR: failed to serialize login bootstrap packet" << endl;
+		return -1;
+	}
+	
+    if (!send_message(send_buffer, len)){
         cerr << "ERR: failed to send login bootstrap packet" << endl;
         return -1;
     }
@@ -578,6 +587,8 @@ bool Client::init_session(){
 	login_bootstrap_pkt bootstrap_pkt;
 	login_authentication_pkt server_auth_pkt; 
 	login_authentication_pkt client_auth_pkt;
+	unsigned char* plaintext;
+	int plainlen;
 	
 	// receive buffer
 	unsigned char* receive_buffer;
@@ -619,27 +630,38 @@ bool Client::init_session(){
 			continue;
 		}
 		
+		// derive symmetric key using server_auth_pkt.symmetric_key_param_server_clear
+		
+		// symmetric_key_no_hashed = // IMPLEMENT
+		
+		// hmac_key_no_hashed = // IMPLEMENT
+		
+		// hash the keys
+		/*ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
+		
+		if (ret != 0){
+			return ret;
+		}
+		
+		ret = hash_hmac_key(hmac_key, hmac_key_no_hashed);
+		
+		if (ret != 0){
+			return ret;
+		}*/
+		
+		// decrypt the encrypted part using the derived symmetric key
+		cbc_decrypt_fragment(server_auth_pkt.encrypted_signing, server_auth_pkt.encrypted_signing_len, server_auth_pkt.iv_cbc, plaintext, plainlen);
+		
+		// extract the key from the server certificate
+		
+		// verify the signature
+		
+		// check freshness EVP_PKEY_parameters_eq()
+		
 		// correct packet
 		free(receive_buffer);
 		break;
 	}
-	
-	// verify the server certificate and extract server's public key
-	
-	// derive symmetric key and hash it using SHA-256
-	
-	// decrypt the signed part using IV
-	
-	// verify the signature using server's public key
-	
-	// verify freshness on g^a
-	
-	// derive HMAC key and hash it using SHA-256
-	
-	// delete a,c (client parameters)
-	
-	// send LOGIN_CLIENT_AUTHENTICATION
-	
 	
 	// free dh parameters
 	EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);

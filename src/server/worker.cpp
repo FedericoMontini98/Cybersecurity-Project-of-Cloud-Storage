@@ -365,15 +365,13 @@ X509* Worker::get_certificate() {
 	try {
 		file = fopen(filename_certificate.c_str(), "r");
 		if (!file) {
-			cerr << "[Thread " << this_thread::get_id() << "] get_server_certificate: "
-			<< "cannot open file " << filename_certificate << endl;
+			cerr << "cannot find server cetificate" << endl;
 			throw 0;
 		}
 
 		cert = PEM_read_X509(file, nullptr, nullptr, nullptr);
 		if (!cert) {
-			cerr << "[Thread " << this_thread::get_id() << "] get_server_certificate: "
-			<< "cannot read X509 certificate " << endl;
+			cerr << "cannot read server certificate correctly" << endl;
 			throw 1;
 		}
 
@@ -408,9 +406,6 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	int cipherlen;
 	int ret;
 	
-	// initialize to 0 the pack
-    memset(&pkt, 0, sizeof(pkt));
-	
 	pkt.code = LOGIN_AUTHENTICATION;
 	
 	// load server certificate
@@ -423,6 +418,8 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	
 	part_to_encrypt = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
 	
+	cout << "regolare" << endl;
+	
 	if (part_to_encrypt == nullptr){
 		cerr << "error in serialize part to encrypt" << endl;
 		return -1;
@@ -434,6 +431,10 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 		cerr << "cannot generate valid signature" << endl;
 		return -1;
 	}
+	
+	cout << pte_len << endl;
+	cout << "regolare2" << endl;
+	cout << signature_len << endl;
 
 	// encrypt, also set the iv field
 	ret = cbc_encrypt_fragment(signature, signature_len, iv, ciphertext, cipherlen);
@@ -442,16 +443,31 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 		return -1;
 	}
 	
+	cout << "regolare3" << endl;
 	pkt.iv_cbc = iv;
 	pkt.encrypted_signing = ciphertext;
 	pkt.encrypted_signing_len = cipherlen;
 	
+	/*cout << "fields" << endl;
+	printf ("iv: %s \n", (char*) pkt.iv_cbc);
+	printf("encryption: %s \n + %d", (char* ) pkt.encrypted_signing, pkt.encrypted_signing_len);*/
+	cout << "cert:";
+	BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
+	X509_print_ex(bp, pkt.cert, 1, NULL);
+	BIO_free(bp);
+	cout << endl;
+	
+	
 	final_pkt = (unsigned char*) pkt.serialize_message(final_pkt_len);
+	
+	cout << "regolare4" << endl;
 	
 	if (!send_message(final_pkt, final_pkt_len)){
 		cerr << "message cannot be sent" << endl;
 		return -1;
 	}
+	
+	cout << "regolare5" << endl;
 	
 	return 0;
 }
@@ -462,9 +478,14 @@ bool Worker::init_session(){
     uint32_t len;
 	login_bootstrap_pkt bootstrap_pkt;
 	login_authentication_pkt server_auth_pkt;
+	login_authentication_pkt client_auth_pkt;
 	unsigned char* symmetric_key_no_hashed;
 	unsigned char* hmac_key_no_hashed;
 	int ret;
+	
+	memset(&bootstrap_pkt, 0, sizeof(bootstrap_pkt));
+	memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
+	memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
 	
 	// receive bootstrap_pkt
 	while (true){
@@ -476,7 +497,7 @@ bool Worker::init_session(){
 			continue;
 		}
 		
-		// check if it is consistent with server_auth_pkt
+		// deserialize bootstrap pkt
 		if (!bootstrap_pkt.deserialize_message(receive_buffer)){
 			cerr << "ERR: some error in deserialize login_bootstrap_pkt" << endl;
 			free(receive_buffer);
@@ -497,6 +518,8 @@ bool Worker::init_session(){
 			continue;
 		}
 		
+		cout << "FIRST OK" << endl;
+		
 		// correct packet
 		free(receive_buffer);
 		break;
@@ -506,12 +529,14 @@ bool Worker::init_session(){
 	server_auth_pkt.symmetric_key_param_server = generate_sts_key_param();
 	
 	if (server_auth_pkt.symmetric_key_param_server == nullptr){
+		cerr << "ERR: failed to generate session keys parameters" << endl;
 		return -1;
 	}
 	
 	server_auth_pkt.hmac_key_param_server = generate_sts_key_param();
 	
 	if (server_auth_pkt.hmac_key_param_server == nullptr){
+		cerr << "ERR: failed to generate session keys parameters" << endl;
 		return -1;
 	}
 	

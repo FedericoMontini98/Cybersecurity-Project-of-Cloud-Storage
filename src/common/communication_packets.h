@@ -116,8 +116,11 @@ struct login_bootstrap_pkt {
         code = ntohs(code);
         pointer_counter += sizeof(code);
 		
+		cout << code << endl;
+		
 		// pkt type mismatch
 		if (code != LOGIN_BOOTSTRAP){
+			cerr << "invalid code in login bootstrap" << endl;
 			return false;
 		}
 
@@ -143,11 +146,17 @@ struct login_bootstrap_pkt {
         // copy of the symmetric parameter
         symmetric_key_param = deserialize_evp_pkey(serialized_pkt + pointer_counter, symmetric_key_param_len);
         pointer_counter += symmetric_key_param_len;
+		
+		if (symmetric_key_param == nullptr){
+			cerr << "error in deserialization of symmetric key" << endl;
+			return false;
+		}
 
         // copy of the hmac parameter
         hmac_key_param = deserialize_evp_pkey(serialized_pkt + pointer_counter, hmac_key_param_len);
 		
-		if (symmetric_key_param == nullptr || hmac_key_param == nullptr){
+		if (hmac_key_param == nullptr){
+			cerr << "error in deserialization of hmac key" << endl;
 			return false;
 		}
 
@@ -196,9 +205,11 @@ struct login_authentication_pkt {
 	// clear fields
     uint16_t code;
 	uint32_t cert_len = 0;
+	uint32_t symmetric_key_param_server_clear_len;
 	uint32_t encrypted_signing_len;
 	uint8_t* iv_cbc = nullptr;
 	X509* cert = nullptr;
+	EVP_PKEY* symmetric_key_param_server_clear;
 	
 	// encrypted string
 	uint8_t* encrypted_signing = nullptr;
@@ -283,9 +294,10 @@ struct login_authentication_pkt {
 	void* serialize_message(int& len){
 		uint8_t* serialized_pkt = nullptr;  
 		void* cert_buffer = nullptr; 
+		void* key_buffer_symmetric_server_clear = nullptr;
 		int pointer_counter = 0;
 		
-		if(encrypted_signing == nullptr || encrypted_signing_len== 0 || iv_cbc == nullptr || cert == nullptr || cert_len == 0){
+		if(encrypted_signing == nullptr || encrypted_signing_len == 0 || iv_cbc == nullptr || cert == nullptr){
 			
 			cerr << "missing fields for serialization" << endl;
 			return nullptr;
@@ -299,8 +311,12 @@ struct login_authentication_pkt {
 		cert_buffer = serialize_certificate_X509(cert, cert_len);
 		uint32_t certified_cert_len = htonl(cert_len);
 		
-		len = sizeof(certified_code) + sizeof(certified_cert_len) + sizeof(certified_encrypted_signing_len) 
-		+ iv_cbc_len + cert_len + encrypted_signing_len;
+		// serialize the dh key
+		key_buffer_symmetric_server_clear = serialize_evp_pkey(symmetric_key_param_server_clear, symmetric_key_param_server_clear_len);
+		uint32_t certified_symmetric_key_server_clear_len = htonl(symmetric_key_param_server_clear_len);
+		
+		len = sizeof(certified_code) + sizeof(certified_cert_len) + sizeof(certified_symmetric_key_server_clear_len) + sizeof(certified_encrypted_signing_len) 
+		+ iv_cbc_len + cert_len + symmetric_key_param_server_clear_len + encrypted_signing_len;
 		
 		// buffer allocation for the serialized packet
         serialized_pkt = (uint8_t*) malloc(len);
@@ -310,25 +326,36 @@ struct login_authentication_pkt {
             return nullptr;
         }
 		
-		// copy lengths
+		// copy code
 		memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
 		pointer_counter += sizeof(certified_code);
+		
+		// copy lengths
 		memcpy(serialized_pkt + pointer_counter, &certified_cert_len, sizeof(certified_cert_len));
 		pointer_counter += sizeof(certified_cert_len);
+		
+		memcpy(serialized_pkt + pointer_counter, &certified_symmetric_key_server_clear_len, sizeof(certified_symmetric_key_server_clear_len));
+		pointer_counter += sizeof(certified_symmetric_key_server_clear_len);
+		
 		memcpy(serialized_pkt + pointer_counter, &certified_encrypted_signing_len, sizeof(certified_encrypted_signing_len));
 		pointer_counter += sizeof(encrypted_signing_len);
-		
+
 		// copy fields
 		memcpy(serialized_pkt + pointer_counter, iv_cbc, iv_cbc_len);
 		pointer_counter += iv_cbc_len;
+		
 		memcpy(serialized_pkt + pointer_counter, cert_buffer, cert_len);
 		pointer_counter += cert_len;
+		
+		memcpy(serialized_pkt + pointer_counter, key_buffer_symmetric_server_clear, symmetric_key_param_server_clear_len);
+		pointer_counter += symmetric_key_param_server_clear_len;
+		
 		memcpy(serialized_pkt + pointer_counter, encrypted_signing, encrypted_signing_len);
 		
 		return serialized_pkt;
 	}
 	
-	// deserialize the message with the encrypted parte, this function must be called before deserialize_encrypted_part
+	// deserialize the message with the encrypted part, this function must be called before deserialize_encrypted_part
     bool deserialize_message(uint8_t* serialized_pkt){
 		int pointer_counter = 0;
 
@@ -347,6 +374,11 @@ struct login_authentication_pkt {
         cert_len = ntohl(cert_len);
         pointer_counter += sizeof(cert_len);
 		
+		// copy of dh key in clear len
+		memcpy (&symmetric_key_param_server_clear_len, serialized_pkt + pointer_counter, sizeof(symmetric_key_param_server_clear_len));
+        symmetric_key_param_server_clear_len = ntohl(symmetric_key_param_server_clear_len);
+        pointer_counter += sizeof(symmetric_key_param_server_clear_len);
+		
 		// copy of encrypted_signing_len
 		memcpy (&encrypted_signing_len, serialized_pkt + pointer_counter, sizeof(encrypted_signing_len));
         encrypted_signing_len = ntohl(encrypted_signing_len);
@@ -360,8 +392,12 @@ struct login_authentication_pkt {
 		cert = deserialize_certificate_X509 (serialized_pkt + pointer_counter, cert_len);
 		pointer_counter += cert_len;
 		
-		// copy of the encrypted part
-		memcpy (encrypted_signing, serialized_pkt + pointer_counter, encrypted_signing_len);
+		// copy of dh key
+		symmetric_key_param_server_clear = deserialize_evp_pkey(serialized_pkt + pointer_counter, symmetric_key_param_server_clear_len);
+		pointer_counter += symmetric_key_param_server_clear_len;
+		
+		// point to encrypted part
+		encrypted_signing =  serialized_pkt + pointer_counter;
 		
 		/*
         BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
@@ -370,20 +406,25 @@ struct login_authentication_pkt {
         */
     }
 	
+	// deserialize the decripted part 
 	bool deserialize_encrypted_part(uint8_t* plaintext){
 		int pointer_counter = 0;
 		
 		// length copies
         memcpy(&symmetric_key_param_len_server, plaintext, sizeof(symmetric_key_param_len_server));
+		symmetric_key_param_len_server = ntohl(symmetric_key_param_len_server);
         pointer_counter += sizeof(symmetric_key_param_len_server);
 		
 		memcpy(&hmac_key_param_len_server, plaintext + pointer_counter, sizeof(hmac_key_param_len_server));
+		hmac_key_param_len_server = ntohl(hmac_key_param_len_server);
         pointer_counter += sizeof(hmac_key_param_len_server);
 		
 		memcpy(&symmetric_key_param_len_client, plaintext + pointer_counter, sizeof(symmetric_key_param_len_client));
+		symmetric_key_param_len_client = ntohl(symmetric_key_param_len_client);
         pointer_counter += sizeof(symmetric_key_param_len_client);
 		
 		memcpy(&hmac_key_param_len_client, plaintext + pointer_counter, sizeof(hmac_key_param_len_client));
+		hmac_key_param_len_client = ntohl(hmac_key_param_len_client);
         pointer_counter += sizeof(hmac_key_param_len_client);
 
 		// key deserialization
