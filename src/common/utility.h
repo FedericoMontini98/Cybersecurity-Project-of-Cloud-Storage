@@ -25,7 +25,7 @@ EVP_PKEY* generate_dh_key();
  * @param server_dh_key is the key genereted by the server
  * @return the session key on success or NULL in the other cases
  */
-unsigned char* derive_share_secret(EVP_PKEY* client_dh_key, EVP_PKEY* server_dh_key);
+unsigned char* derive_shared_secret(EVP_PKEY* client_dh_key, EVP_PKEY* server_dh_key);
 void* serialize_evp_pkey (EVP_PKEY* _key, uint32_t& _key_length);
 EVP_PKEY* deserialize_evp_pkey (const void* _key_buffer, const uint32_t _key_length);
 void* serialize_certificate_X509(X509* cert, uint32_t& cert_length);

@@ -70,6 +70,7 @@ EVP_PKEY* generate_dh_key(){
     return dh_key;
 }
 
+
 /**
  * This function derive a shared session key using the Diffie-Hellman exchange method
  * The shared session key obtained by the merge of the client and the server's keys is then 
@@ -80,7 +81,7 @@ EVP_PKEY* generate_dh_key(){
  * @param other_host_dh_key is the key genereted by the others hosts
  * @return the session key on success or NULL in the other cases
  */
-unsigned char* derive_share_secret(EVP_PKEY* this_host_dh_key, EVP_PKEY* other_host_dh_key){
+unsigned char* derive_shared_secret(EVP_PKEY* this_host_dh_key, EVP_PKEY* other_host_dh_key){
 
 	int ret;
 	unsigned char* key = nullptr;
