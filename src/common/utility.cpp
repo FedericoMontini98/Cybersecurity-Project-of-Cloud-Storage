@@ -5,6 +5,9 @@
  * 
  * @return the genereted key on success or NULL in the other cases
  */
+ 
+# define DEBUG true
+
 EVP_PKEY* generate_dh_key(){
 	EVP_PKEY* dh_params = nullptr;
     EVP_PKEY_CTX* dh_gen_ctx = nullptr;
@@ -384,7 +387,7 @@ unsigned char* sign_message(EVP_PKEY* prvkey, const unsigned char* msg, const si
 		}
 
 		signature_len = EVP_PKEY_size(prvkey);
-		signature = (unsigned char*)malloc(signature_len);
+		signature = (unsigned char*) malloc(signature_len);
 		if (!signature) {
 			cerr << "error in signature malloc" << endl;
 			throw 4;
@@ -405,6 +408,16 @@ unsigned char* sign_message(EVP_PKEY* prvkey, const unsigned char* msg, const si
 		}
 		return nullptr;
 	}
+	
+	// DEBUG, print signature 
+    if (DEBUG) {
+        cout << "signature_len: " << signature_len << endl;
+        cout << "signature: ";
+        for (int i = 0; i < 1; i++){
+            std::cout << static_cast<unsigned int>(signature[0]) << std::flush;
+        }
+        cout << endl;
+    }
 	
 	EVP_MD_CTX_free(ctx);
 	EVP_PKEY_free(prvkey);
