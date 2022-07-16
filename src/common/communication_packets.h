@@ -170,14 +170,6 @@ struct login_bootstrap_pkt {
     }
 };
 
-struct upload_filename_exist {
-    int code;
-    string filename;
-    bool response;      //True: upload allowed  False: upload not allowed
-    uint32_t counter;
-    
-};
-
 # define LOGIN_REFUSE_CONNECTION 2
 
 struct login_refuse_connection_pkt {
