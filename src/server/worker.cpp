@@ -111,8 +111,7 @@ int Worker::receive_message(unsigned char*& recv_buffer, uint32_t& len){ //EDIT:
     return 0;
 }
 
-int Worker::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, 
-int& cipherlen){
+int Worker::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, bool _generate_iv){
 	int outlen;
     int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
     int ret;
@@ -138,12 +137,15 @@ int& cipherlen){
             cerr << "context definition failed" << endl;
             throw 2;
         }
-
-        //iv generation
-        if (!generate_iv(EVP_aes_128_cbc())){
-            cerr << "failed to generate iv" << endl;
-            throw 3;
-        } 
+		
+		// if variable is set then generate iv
+		if (_generate_iv){
+			//iv generation
+			if (!generate_iv(EVP_aes_128_cbc())){
+				cerr << "failed to generate iv" << endl;
+				throw 3;
+			} 
+		}
 
         // init encryption
         ret = EVP_EncryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
@@ -203,7 +205,7 @@ int& cipherlen){
 
 // function to decrypt fragments
 // this function will set plaintext and plainlen arguments
-int Worker::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen){
+int Worker::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen){
 	int outlen;
     int ret;
 
@@ -215,7 +217,7 @@ int Worker::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
     }
 	
 	//error if iv is not set
-    if (!iv){
+    if (iv == nullptr){
         cerr << "ERR: missing iv for decryption" << endl;
         return -1;
     }
@@ -338,7 +340,7 @@ bool Worker::generate_iv (const EVP_CIPHER* cipher){
     if (DEBUG) {
         cout << "iv_len: " << iv_len << endl;
         cout << "iv: ";
-        for (int i = 0; i<iv_len; i++){
+        for (int i = 0; i < iv_len; i++){
             std::cout << static_cast<unsigned int>(iv[i]) << std::flush;
         }
         cout << endl;
@@ -417,7 +419,6 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	int final_pkt_len;
 	unsigned int signature_len;
 	unsigned char* signature;
-	unsigned char* iv;
 	unsigned char* ciphertext;
 	unsigned char* final_pkt;
 	int cipherlen;
@@ -449,12 +450,10 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 		return -1;
 	}
 	
-	cout << pte_len << endl;
 	cout << "regolare2" << endl;
-	cout << signature_len << endl;
 
 	// encrypt, also set the iv field
-	ret = cbc_encrypt_fragment(signature, signature_len, iv, ciphertext, cipherlen);
+	ret = cbc_encrypt_fragment(signature, signature_len, ciphertext, cipherlen, true);
 	if (ret != 0){
 		cerr << "cannot generate valid ciphertext" << endl;
 		return -1;
@@ -543,14 +542,16 @@ bool Worker::init_session(){
 	}
 	
 	// generate dh keys
-	server_auth_pkt.symmetric_key_param_server = generate_sts_key_param();
+	server_auth_pkt.symmetric_key_param_server_clear = generate_sts_key_param();
+	server_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear; // TO ENCRYPT
 	
 	if (server_auth_pkt.symmetric_key_param_server == nullptr){
 		cerr << "ERR: failed to generate session keys parameters" << endl;
 		return -1;
 	}
 	
-	server_auth_pkt.hmac_key_param_server = generate_sts_key_param();
+	server_auth_pkt.hmac_key_param_server_clear = generate_sts_key_param();
+	server_auth_pkt.hmac_key_param_server = server_auth_pkt.hmac_key_param_server_clear; // TO ENCRYPT
 	
 	if (server_auth_pkt.hmac_key_param_server == nullptr){
 		cerr << "ERR: failed to generate session keys parameters" << endl;
@@ -560,7 +561,6 @@ bool Worker::init_session(){
 	// set the params sent by client
 	server_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
 	server_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
-
 	
 	// derive key using login_bootstrap_pkt.symmetric_key_param and hmac one
 	
@@ -620,6 +620,5 @@ void Worker::run (){
 
 		// the content of the buffer is not needed anymore
 		free(recv_buffer);
-    }
     }
 }

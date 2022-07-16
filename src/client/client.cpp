@@ -286,8 +286,7 @@ bool Client::generate_iv (const EVP_CIPHER* cipher){
 // function to encrypt a fragment of a message, the maximum size of a fragment is set by the file fragments
 // this function will set the iv, ciphertext and cipherlen arguments
 // HANDLE FREE ONLY ON ERROR
-int Client::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, 
-int& cipherlen){
+int Client::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, bool _generate_iv){
 	int outlen;
     int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
     int ret;
@@ -313,12 +312,15 @@ int& cipherlen){
             cerr << "context definition failed" << endl;
             throw 2;
         }
-
-        //iv generation
-        if (!generate_iv(EVP_aes_128_cbc())){
-            cerr << "failed to generate iv" << endl;
-            throw 3;
-        } 
+		
+		// if variable is set then generate iv
+		if (_generate_iv){
+			//iv generation
+			if (!generate_iv(EVP_aes_128_cbc())){
+				cerr << "failed to generate iv" << endl;
+				throw 3;
+			} 
+		}
 
         // init encryption
         ret = EVP_EncryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
@@ -378,7 +380,7 @@ int& cipherlen){
 
 // function to decrypt fragments
 // this function will set plaintext and plainlen arguments
-int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen){
+int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen){
 	int outlen;
     int ret;
 
@@ -390,7 +392,7 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
     }
 	
 	//error if iv is not set
-    if (!iv){
+    if (iv == nullptr){
         cerr << "ERR: missing iv for decryption" << endl;
         return -1;
     }
@@ -512,7 +514,7 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len,
 
         //buffer = pkt.serialize_message();
 
-        cbc_encrypt_fragment(buffer, ret, this->iv, ct, len_ct);
+        cbc_encrypt_fragment(buffer, ret, ct, len_ct, false);
 
         if(!send_message((void*)ct, cipherlen)){
             cout<<"Error: send of a fragment failed"<<endl;
@@ -633,6 +635,8 @@ bool Client::init_session(){
 		cerr << "Error: connection to server failed" << endl;
 		return false;
 	}
+	
+	cout << "Connection with server has been established correctly for socket id: " << session_socket << endl;
 
     // send login bootstrap packet
     if (send_login_bootstrap(bootstrap_pkt) < 0){
@@ -677,7 +681,9 @@ bool Client::init_session(){
 		}*/
 		
 		// decrypt the encrypted part using the derived symmetric key
-		cbc_decrypt_fragment(server_auth_pkt.encrypted_signing, server_auth_pkt.encrypted_signing_len, server_auth_pkt.iv_cbc, plaintext, plainlen);
+		iv = server_auth_pkt.iv_cbc;
+		// allocate
+		cbc_decrypt_fragment(server_auth_pkt.encrypted_signing, server_auth_pkt.encrypted_signing_len, plaintext, plainlen);
 		
 		// extract the key from the server certificate
 		
@@ -798,7 +804,7 @@ int Client::upload(string username){
     string buffer =  to_string(pkt.filename_len) + " " + filename + " " + to_string(pkt.response) + " " + to_string(pkt.counter) + " " + to_string(pkt.size);
 
     // Encryption
-    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), iv, ciphertext, cipherlen)!=0){
+    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), ciphertext, cipherlen, true)!=0){
         cout<<"Error during encryption"<<endl;
         return -1;
     }
@@ -872,7 +878,7 @@ int Client::upload(string username){
     int ptlen;
 
     //Decrypt the ciphertext and obtain the plaintext
-    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,rcvd_pkt.iv,plaintxt,ptlen)!=0){
+    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
         cout<<"Error during encryption"<<endl;
         return -2;
     }
@@ -915,7 +921,7 @@ int Client::upload(string username){
     buffer =  pkt_end_1.response + " " + to_string(pkt_end_1.counter);
 
     // Encryption
-    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), iv, ciphertext, cipherlen)!=0){
+    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), ciphertext, cipherlen, false)!=0){
         cout<<"Error during encryption of EOF Handshaking"<<endl;
         return -5;
     }
@@ -977,7 +983,7 @@ int Client::upload(string username){
     }
 
     //Decrypt the ciphertext and obtain the plaintext
-    if(cbc_decrypt_fragment((unsigned char* )pkt_end_2.ciphertext.c_str(),pkt_end_2.cipher_len,iv,plaintxt,ptlen)!=0){
+    if(cbc_decrypt_fragment((unsigned char* )pkt_end_2.ciphertext.c_str(),pkt_end_2.cipher_len, plaintxt,ptlen)!=0){
         cerr<<"Error during encryptionof packet #6"<<endl;
         return -6;
     }
@@ -1008,7 +1014,7 @@ int Client::upload(string username){
     return 0;
 }
 
-/**Function that manage the downlaod command, takes as a parameter the name of the file that the user want to download.
+/**Function that manage the download command, takes as a parameter the name of the file that the user want to download.
  *  @filename : name of the file that the user wants to download 
  *  @username : the username used to log in
  */
@@ -1048,7 +1054,7 @@ int Client::download(string username){
     int cipherlen;
 
     //Message encryption
-    if(cbc_encrypt_fragment(buffer, pkt_len, iv, ciphertext, cipherlen)!=0){
+    if(cbc_encrypt_fragment(buffer, pkt_len, ciphertext, cipherlen, true)!=0){
         cout<<"Error during encryption"<<endl;
         return -1;
     }

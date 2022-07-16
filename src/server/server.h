@@ -13,7 +13,7 @@
 
 # define DEBUG true
 # define BACKLOG_QUEUE_SIZE  10
-# define FILE_FRAGMENTS_SIZE 4096
+# define FILE_FRAGMENTS_SIZE 8192
 
 class Server {
     int listener_socket = -1;
@@ -45,8 +45,14 @@ class Worker {
     // keys
     /* must be freed */
     EVP_PKEY* private_key = nullptr; // contain a copy of the private_key of the server
-    unsigned char* symmetric_key = (unsigned char*) "0123456789012345"; //EDIT set to nullptr
-    unsigned char* hmac_key = nullptr;
+	
+    //EDIT set to nullptr
+    unsigned char* symmetric_key = (unsigned char*) 
+	"0123456789012345"; 
+	
+	//EDIT set to nullptr
+    unsigned char* hmac_key = (unsigned char*)
+	"01234567890123450123456789012345";
 
     public:
 
@@ -54,8 +60,8 @@ class Worker {
     ~Worker();
 	bool send_message(void* msg, const uint32_t len);
     int receive_message(unsigned char*& recv_buffer, uint32_t& len);
-	int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
-	int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
+	int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, bool _generate_iv);
+    int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen);
     int handle_command(unsigned char* cmd);
 	bool load_private_server_key();
 	EVP_PKEY* generate_sts_key_param();
