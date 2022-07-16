@@ -577,70 +577,12 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
     
 }
 
-
-
 // generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
-int Client::generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, int msg_len, unsigned char*& digest, unsigned*& digestlen){
-    int ret;
-    EVP_MD_CTX* ctx;
+int Client::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen){
+	
+	// hmac_util.cpp
+	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, FILE_FRAGMENTS_SIZE);
 
-    if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
-        cerr << "message length is not allowed" << endl;
-        return -1;
-    }
-
-    try{
-        digest = (unsigned char*) malloc(EVP_MD_size(hmac_type));
-        if (!digest){
-            cerr << "malloc of digest failed" << endl;
-            throw 1;
-        }
-
-        ctx = EVP_MD_CTX_new();
-
-        if (!ctx){
-            cerr << "context definition failed" << endl;
-            throw 2;
-        }
-
-        ret = EVP_DigestInit(ctx, hmac_type);
-
-        if (ret != 1) {
-			cerr << "failed to initialize digest creation" << endl;
-			ERR_print_errors_fp(stderr);
-			throw 3;
-		}
-
-        ret = EVP_DigestUpdate(ctx, (unsigned char*)msg, sizeof(msg)); //try or put it in input function
-
-        if (ret != 1) {
-            cerr << "failed to update digest " << endl;
-			ERR_print_errors_fp(stderr);
-			throw 4;
-        }
-
-        ret = EVP_DigestFinal(ctx, digest, digestlen);
-
-        if (ret != 1) {
-            cerr << "failed to finalize digest " << endl;
-			ERR_print_errors_fp(stderr);
-			throw 5;
-        }
-
-    }
-    catch (int error_code){
-
-        free(digest);
-        
-        if (error_code > 1){
-            EVP_MD_CTX_free(ctx);
-        }
-
-        return -1;
-
-    }
-
-    return 0;
 }
 
 // generate the sts key parameter, null if an error occurs
@@ -793,19 +735,21 @@ uint32_t Client::file_exists_to_download(string filename, string username){
 void Client::help(){
     cout<<"===================================== HELP ================================================="<<endl<<endl;
     cout<<"The available commands are the following:"<<endl<<endl;
-    cout<<"help: that shows all the available commands"<<endl<<endl;
-    cout<<"download fileName: Specifies a file on the server machine. The server sends the requested file to the user. The filename of any downloaded file must be the filename used to store the file on the server. If this is not possible, the file is not downloaded."<<endl<<endl;
-    cout<<"delete fileName: Specifies a file on the server machine. The server asks the user for confirmation. If the user confirms, the file is deleted from the server. "<<endl<<endl;
-    cout<<"upload fileName: Specifies a filename on the client machine and sends it to the server. The server saves the uploaded file with the filename specified by the user. If this is not possible, the file is not uploaded. The max file size is 4GiB"<<endl<<endl;
-    cout<<"list: The client asks to the server the list of the filenames of the available files in his dedicated storage. The client prints to screen the list."<<endl<<endl;
-    cout<<"rename fileName newName: Specifies a file on the server machine. Within the request, the clients sends the new filename. If the renaming operation is not possible, the filename is not changed."<<endl<<endl;
-    cout<<"logout: The client gracefully closes the connection with the server. "<<endl;
+    cout<<"help : \tthat shows all the available commands"<<endl<<endl;
+    cout<<"download : \tSpecifies a file on the server machine. The server sends the requested file to the user. The filename of any downloaded file must be the filename used to store the file on the server. If this is not possible, the file is not downloaded."<<endl<<endl;
+    cout<<"delete : \tSpecifies a file on the server machine. The server asks the user for confirmation. If the user confirms, the file is deleted from the server. "<<endl<<endl;
+    cout<<"upload : \tSpecifies a filename on the client machine and sends it to the server. The server saves the uploaded file with the filename specified by the user. If this is not possible, the file is not uploaded. The max file size is 4GiB"<<endl<<endl;
+    cout<<"list: \tThe client asks to the server the list of the filenames of the available files in his dedicated storage. The client prints to screen the list."<<endl<<endl;
+    cout<<"rename : \tSpecifies a file on the server machine. Within the request, the clients sends the new filename. If the renaming operation is not possible, the filename is not changed."<<endl<<endl;
+    cout<<"logout: \tThe client gracefully closes the connection with the server. "<<endl;
     cout<<"============================================================================================"<<endl<<endl; 
 }
 
-/**Function that manage the upload command, takes as a parameter the name of the file that the user want to upload. The file must be located in a specific directory.
- *  @filename : name of the file that the user wants to upload 
- *  @username : the username used to log in
+/**
+ * Function that manage the upload command, takes as a parameter the name of the file that the user want to upload. The file must be located in a specific directory.
+ * 
+ * @param username: name of the file that the user wants to upload
+ * @return int: exit param
  */
 int Client::upload(string username){
     uint32_t counter = 0;
@@ -871,7 +815,7 @@ int Client::upload(string username){
     pkt.ciphertext = (const char*)ciphertext;
     pkt.cipher_len = cipherlen;
     pkt.iv = iv;
-    generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,50000); 
+    generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,); 
     pkt.HMAC = HMAC;
 
 
@@ -912,8 +856,9 @@ int Client::upload(string username){
     memcpy(MACStr,iv, IV_LENGTH);
     memcpy(MACStr + 16,ciphertext,rcvd_pkt.cipher_len);
 
-    //Generate the HMAC on the receiving side iv||ciphertext
-    generate_SHA256_MAC(MACStr,rcvd_pkt.cipher_len,HMAC,MAC_len,50000);
+    //Generate the HMAC on the receiving side iv||ciphertext    //Usa generate HMAC
+    generate_HMAC()
+    ge(MACStr,rcvd_pkt.cipher_len,HMAC,MAC_len,50000);
     //Free
     free(MACStr);
 
@@ -1327,7 +1272,7 @@ int Client::run(){
     
     send_message(send_buffer, len);
     return 0;
-}*/
+}
 /*
 int Client::run(){
     upload("fedem");

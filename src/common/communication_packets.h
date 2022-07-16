@@ -19,6 +19,8 @@ using namespace std;
     uint32_t = int/ unsigned int     -- htonl
 */
 
+/*********************************************************************************************************************************/
+
 // SENT IN CLEAR
 #define LOGIN_BOOTSTRAP 1
 
@@ -177,140 +179,23 @@ struct login_bootstrap_pkt
 
 /*********************************************************************************************************************************/
 
-#define BOOTSTRAP_UPLOAD 5
-struct bootstrap_upload
+#define LOGIN_REFUSE_CONNECTION 2
+// sent in clear
+struct login_refuse_connection_pkt
 {
-    // Send through the net
     uint16_t code;
-    unsigned char* iv;
-    uint32_t cipher_len;
-    string ciphertext;
-    unsigned char* HMAC;
 
-    // Filled before serialization and after deserialization_decrypted
-    uint32_t filename_len;
-    string filename;
-    uint32_t response; // True: upload allowed  False: upload not allowed
-    uint32_t counter;
-    uint32_t size;
-
-    void *serialize_message(int &len)
+    void serialize_message()
     {
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (sizeof(code) + sizeof(cipher_len) + cipher_len + IV_LENGTH + HMAC_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-
-        uint16_t certified_code = htons(code);
-        uint32_t certif_ciph_len = htonl(cipher_len);
-
-        // copy of the code
-        memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
-        pointer_counter += sizeof(code);
-
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
+        code = htons(code);
     }
 
-    bool deserialize_message(uint8_t *serialized_pkt)
+    void deserialize_message()
     {
-        int pointer_counter = 0;
-
-        // copy of the code
-        memcpy(&code, serialized_pkt, sizeof(code));
         code = ntohs(code);
-        pointer_counter += sizeof(code);
-
-        if(code!= BOOTSTRAP_UPLOAD){
-            return false;
-        }
-
-        iv = (unsigned char*)malloc(IV_LENGTH);
-
-        // copy of the iv
-        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // copy of the ciphertext length
-        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
-        cipher_len = ntohl(cipher_len);
-        pointer_counter += sizeof(cipher_len);
-
-        // copy of the ciphertext
-        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
-        pointer_counter += cipher_len;
-
-        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
-
-        // copy of the ciphertext
-        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return true;
     }
-
-    bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
-
-        string s = (char*)serialized_decrypted_pkt;
-        string delimiter = " ";
-        unsigned int pos;
-        //Extract the filename length
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            filename_len = stoi(i);
-            s.erase(0, pos + delimiter.length());
-        }
-        // Extract the filename
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            filename = s.substr(0, pos);
-            s.erase(0, pos + delimiter.length());
-        }
-        // Extract the counter
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            counter = stoi(i);
-            s.erase(0, pos + delimiter.length());
-        }
-        // Extract the size
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            filename_len = stoi(i);
-            s.erase(0, pos + delimiter.length());
-        }
-        free(serialized_decrypted_pkt);
-        return true;
-    }
-
 };
+
 
 /*********************************************************************************************************************************/
 
@@ -576,6 +461,143 @@ struct login_authentication_pkt {
 
 /*********************************************************************************************************************************/
 
+#define BOOTSTRAP_UPLOAD 5
+struct bootstrap_upload
+{
+    // Send through the net
+    uint16_t code;
+    unsigned char* iv;
+    uint32_t cipher_len;
+    string ciphertext;
+    unsigned char* HMAC;
+
+    // Filled before serialization and after deserialization_decrypted
+    uint32_t filename_len;
+    string filename;
+    uint32_t response; // True: upload allowed  False: upload not allowed
+    uint32_t counter;
+    uint32_t size;
+
+    void *serialize_message(int &len)
+    {
+        uint8_t *serialized_pkt = nullptr;
+        int pointer_counter = 0;
+
+        len = (sizeof(code) + sizeof(cipher_len) + cipher_len + IV_LENGTH + HMAC_LENGTH);
+
+        serialized_pkt = (uint8_t *)malloc(len);
+        if (!serialized_pkt)
+        {
+            cerr << "serialized packet malloc failed" << endl;
+            return nullptr;
+        }
+
+        uint16_t certified_code = htons(code);
+        uint32_t certif_ciph_len = htonl(cipher_len);
+
+        // copy of the code
+        memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
+        pointer_counter += sizeof(code);
+
+        // adding the iv
+        uint8_t *cert_iv = (uint8_t *)iv;
+        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
+        pointer_counter += IV_LENGTH;
+
+        // adding the ciphertext length
+        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
+        pointer_counter += sizeof(certif_ciph_len);
+
+        // adding the ciphertext
+        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
+        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
+        pointer_counter += cipher_len;
+
+        // adding the hmac
+        uint8_t *cert_hmac = (uint8_t *)HMAC;
+        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
+
+        return serialized_pkt;
+    }
+
+    bool deserialize_message(uint8_t *serialized_pkt)
+    {
+        int pointer_counter = 0;
+
+        // copy of the code
+        memcpy(&code, serialized_pkt, sizeof(code));
+        code = ntohs(code);
+        pointer_counter += sizeof(code);
+
+        if(code!= BOOTSTRAP_UPLOAD){
+            return false;
+        }
+
+        iv = (unsigned char*)malloc(IV_LENGTH);
+
+        // copy of the iv
+        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
+        pointer_counter += IV_LENGTH;
+
+        // copy of the ciphertext length
+        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
+        cipher_len = ntohl(cipher_len);
+        pointer_counter += sizeof(cipher_len);
+
+        // copy of the ciphertext
+        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
+        pointer_counter += cipher_len;
+
+        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
+
+        // copy of the ciphertext
+        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
+
+        return true;
+    }
+
+    bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
+
+        string s = (char*)serialized_decrypted_pkt;
+        string delimiter = " ";
+        unsigned int pos;
+        //Extract the filename length
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            filename_len = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the filename
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            filename = s.substr(0, pos);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the counter
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            counter = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the size
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            filename_len = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+        free(serialized_decrypted_pkt);
+        return true;
+    }
+
+};
+
+/*********************************************************************************************************************************/
+
 #define FILE_UPLOAD 6
 struct file_upload
 {
@@ -766,59 +788,8 @@ struct bootstrap_download
 
 /*********************************************************************************************************************************/
 
-#define LOGIN_REFUSE_CONNECTION 2
-// sent in clear
-struct login_refuse_connection_pkt
-{
-    uint16_t code;
 
-    void serialize_message()
-    {
-        code = htons(code);
-    }
+/*********************************************************************************************************************************/
 
-    void deserialize_message()
-    {
-        code = ntohs(code);
-    }
-};
 
-#define LOGIN_SERVER_AUTHENTICATION 3
-
-struct login_server_authentication_pkt
-{
-    // clear fields
-    uint16_t code;
-    X509 *server_cert;
-    uint8_t *iv_cbc;
-
-    // encrypted string
-    uint32_t encrypted_signing_len;
-    char *encrypted_signing;
-
-    // Decrypted fields, set in deserialization
-    uint32_t symmetric_key_param_len_server;
-    uint32_t hmac_key_param_len_server;
-    uint32_t symmetric_key_param_len;
-    uint32_t hmac_key_param_len;
-
-    EVP_PKEY *symmetric_key_param_server;
-    EVP_PKEY *hmac_key_param_server;
-    EVP_PKEY *symmetric_key_param_client;
-    EVP_PKEY *hmac_key_param_client;
-
-    void serialize_message()
-    {
-        code = htons(code);
-    }
-
-    bool deserialize_message(uint8_t *serialized_pkt)
-    {
-        code = ntohs(code);
-
-        if (code != LOGIN_SERVER_AUTHENTICATION)
-        {
-            return false;
-        }
-    }
-};
+/*********************************************************************************************************************************/

@@ -17,13 +17,11 @@ Worker::~Worker(){
 }
 
 // to test serialization
-void debug_serialize_pkt(uint8_t* buffer){
+/*void debug_serialize_pkt(uint8_t* buffer){
     login_bootstrap_pkt pkt;
-
     pkt.deserialize_message((uint8_t*) buffer);
-
     exit(EXIT_FAILURE);
-}
+}*/
 
 // send a message through socket 
 bool Worker::send_message(void* msg, const uint32_t len){
@@ -109,15 +107,6 @@ int Worker::receive_message(unsigned char*& recv_buffer, uint32_t& len){ //EDIT:
         }
 
     }
-
-    // handle command
-    //handle_command(recv_buffer);
-
-    // TEST SERIALIZATION
-    debug_serialize_pkt(recv_buffer);
-
-    // the content of the buffer is not needed anymore
-    free(recv_buffer);
 
     return 0;
 }
@@ -623,5 +612,14 @@ void Worker::run (){
         if (ret == -2){
             exit(EXIT_FAILURE);
         }
+		
+		/* --ERROR HANDLES-- */
+		
+		// handle command
+		handle_command(recv_buffer);
+
+		// the content of the buffer is not needed anymore
+		free(recv_buffer);
+    }
     }
 }
