@@ -224,7 +224,7 @@ int Worker::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
 
     try {
          // buffer for the plaintext
-        plaintext = (unsigned char*)malloc(cipherlen+1);
+        plaintext = (unsigned char*)malloc(cipherlen);
 		if (!plaintext) {
 			cerr << "ERR: malloc plaintext failed" << endl;
 			throw 1;
@@ -273,9 +273,6 @@ int Worker::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
         }
 
         plainlen += outlen;
-
-        // make plaintext printable
-        plaintext[plainlen] = '\0';
 
     }
     catch (int error_code) {
@@ -436,8 +433,6 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	
 	part_to_encrypt = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
 	
-	cout << "regolare" << endl;
-	
 	if (part_to_encrypt == nullptr){
 		cerr << "error in serialize part to encrypt" << endl;
 		return -1;
@@ -449,8 +444,6 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 		cerr << "cannot generate valid signature" << endl;
 		return -1;
 	}
-	
-	cout << "regolare2" << endl;
 
 	// encrypt, also set the iv field
 	ret = cbc_encrypt_fragment(signature, signature_len, ciphertext, cipherlen, true);
@@ -459,31 +452,16 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 		return -1;
 	}
 	
-	cout << "regolare3" << endl;
 	pkt.iv_cbc = iv;
 	pkt.encrypted_signing = ciphertext;
 	pkt.encrypted_signing_len = cipherlen;
 	
-	/*cout << "fields" << endl;
-	printf ("iv: %s \n", (char*) pkt.iv_cbc);
-	printf("encryption: %s \n + %d", (char* ) pkt.encrypted_signing, pkt.encrypted_signing_len);*/
-	cout << "cert:";
-	BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
-	X509_print_ex(bp, pkt.cert, 1, NULL);
-	BIO_free(bp);
-	cout << endl;
-	
-	
 	final_pkt = (unsigned char*) pkt.serialize_message(final_pkt_len);
-	
-	cout << "regolare4" << endl;
 	
 	if (!send_message(final_pkt, final_pkt_len)){
 		cerr << "message cannot be sent" << endl;
 		return -1;
 	}
-	
-	cout << "regolare5" << endl;
 	
 	return 0;
 }
@@ -585,6 +563,45 @@ bool Worker::init_session(){
 	send_login_server_authentication(server_auth_pkt);
 	
 	// free dh params on the struct
+}
+
+X509* Worker::get_CA_certificate (){
+	// Open file which contains CA certificate
+	FILE* file = fopen(filename_ca_certificate.c_str(), "r");
+	if (!file) {
+		cerr << "failed to open CA certificate file" << endl;
+		return nullptr;
+	}
+
+	// Extract the certificate
+	X509* cert = PEM_read_X509(file, nullptr, nullptr, nullptr);
+	fclose(file);
+	if (!cert) {
+		cerr << "failed to read CA certificate file" << endl;
+		return nullptr;
+	}
+
+	return cert;
+}
+
+
+X509_CRL* Worker::get_crl() {
+	// Open the file which contains the CRL
+	FILE* file = fopen(filename_ca_crl.c_str(), "r");
+	if (!file) {
+		cerr << "cannot open CA crl file" << endl;
+		return nullptr;
+	}
+
+	// Extract the CRL
+	X509_CRL* crl = PEM_read_X509_CRL(file, nullptr, nullptr, nullptr);
+	fclose(file);
+	if (!crl) {
+		cerr << "cannot read pem file of CA crl file" << endl;
+		return nullptr;
+	}
+
+	return crl;
 }
 
 

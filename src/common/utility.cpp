@@ -474,3 +474,66 @@ int verify_signature(EVP_PKEY* pubkey, const unsigned char* signature, const siz
 	return 0;
 }
 
+int validate_certificate(X509* CA_cert, X509_CRL* crl, X509* cert_to_verify) {
+	int ret = 0;
+	X509_STORE* store = nullptr;
+	X509_STORE_CTX* ctx = nullptr;
+
+	try {
+		// allocate store
+		store = X509_STORE_new();
+		if (!store) {
+			cerr << "failed to create a new store" << endl;
+			throw 0;
+		}
+		// add CA_cert to store
+		ret = X509_STORE_add_cert(store, CA_cert);
+		if (ret != 1) {
+			cerr << "failed to add ca certificate to store" << endl;
+			throw 1;
+		}
+		// add crl to store
+		ret = X509_STORE_add_crl(store, crl);
+		if (ret != 1) {
+			cerr << "failed to add crl to store" << endl;
+			throw 1;
+		}
+		// set flags
+		ret = X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK);
+		if (ret != 1) {
+			cerr << "failed to set flags to store" << endl;
+			throw 1;
+		}
+
+		//check validity
+		ctx = X509_STORE_CTX_new();
+		if (!ctx) {
+			cerr << "failed to create a new context for store" << endl;
+			throw 2;
+		}
+		ret = X509_STORE_CTX_init(ctx, store, cert_to_verify, NULL);
+		if (ret != 1) {
+			cerr << "failed to initialize store context" << endl;
+			throw 2;
+		}
+		ret = X509_verify_cert(ctx);
+		if (ret != 1) {
+			cerr << "failed to verify certificate" << endl;
+			cerr << ERR_error_string(ERR_get_error(), NULL) << endl;
+			throw 2;
+		}
+
+	} catch (int e) {
+		if (e >= 2) {
+			X509_STORE_CTX_free(ctx);;
+		}
+		if (e >= 1) {
+			X509_STORE_free(store);
+		}
+		return -1;
+	}
+	X509_STORE_CTX_free(ctx);
+	X509_STORE_free(store);
+	return 0;
+}
+
