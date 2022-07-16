@@ -286,7 +286,7 @@ struct bootstrap_upload
             filename_len = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
-
+        free(serialized_decrypted_pkt);
         return true;
     }
 
@@ -339,6 +339,113 @@ struct file_upload
     unsigned char *msg;
     bool response; // True: upload allowed  False: upload not allowed
     uint32_t counter;
+};
+
+/*********************************************************************************************************************************/
+
+#define FILE_EOF_HS 7
+struct end_upload{
+    // Sent through the net
+    uint16_t code;
+    uint32_t cipher_len;
+    string ciphertext;
+    unsigned char* HMAC;
+
+    //Set during decryption
+    string response;
+    uint32_t counter;
+
+    void *serialize_message(int &len)
+    {
+        uint8_t *serialized_pkt = nullptr;
+        int pointer_counter = 0;
+
+        len = (sizeof(code) + sizeof(cipher_len) + cipher_len + HMAC_LENGTH);
+
+        serialized_pkt = (uint8_t *)malloc(len);
+        if (!serialized_pkt)
+        {
+            cerr << "serialized packet malloc failed" << endl;
+            return nullptr;
+        }
+
+        uint16_t certified_code = htons(code);
+        uint32_t certif_ciph_len = htonl(cipher_len);
+
+        // copy of the code
+        memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
+        pointer_counter += sizeof(code);
+
+        // adding the ciphertext length
+        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
+        pointer_counter += sizeof(certif_ciph_len);
+
+        // adding the ciphertext
+        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
+        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
+        pointer_counter += cipher_len;
+
+        // adding the hmac
+        uint8_t *cert_hmac = (uint8_t *)HMAC;
+        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
+
+        return serialized_pkt;
+    }
+
+    bool deserialize_message(uint8_t *serialized_pkt)
+    {
+        int pointer_counter = 0;
+
+        // copy of the code
+        memcpy(&code, serialized_pkt, sizeof(code));
+        code = ntohs(code);
+        pointer_counter += sizeof(code);
+
+        if(code!= FILE_EOF_HS){
+            return false;
+        }
+
+        // copy of the ciphertext length
+        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
+        cipher_len = ntohl(cipher_len);
+        pointer_counter += sizeof(cipher_len);
+
+        // copy of the ciphertext
+        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
+        pointer_counter += cipher_len;
+
+        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
+
+        // copy of the ciphertext
+        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
+
+        return true;
+    }
+
+        bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
+        unsigned int pos;
+        string s = (char*)serialized_decrypted_pkt;
+        string delimiter = " ";
+        // Extract the response
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            response = s.substr(0, pos);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the counter
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            counter = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+
+        free(serialized_decrypted_pkt);
+        return true;
+    }
+
 };
 
 /*********************************************************************************************************************************/
