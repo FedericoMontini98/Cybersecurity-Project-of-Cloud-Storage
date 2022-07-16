@@ -386,11 +386,30 @@ X509* Worker::get_certificate() {
 	return cert;
 }
 
+/**
+ * this method checks that a user is registered in the 'application at the login
+ * 
+ * @param username of the user who is trying to login
+ * 
+ * @return true if the user is registered, and false otherwise 
+ */
 bool Worker::check_username(string username){
 	
-	// IMPLEMENT
+	ifstream file("users.txt");
+    vector<string> users;
+    string str;
+    while (getline(file, str)) {
+        users.push_back(str);
+    }
+
+    for (string i: users){
+        if(!username.compare(i)){
+            return true;
+        }
+    }
 	
-	return true;
+    return false;
+	
 }
 
 // send the server authentication packet
