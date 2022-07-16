@@ -6,6 +6,8 @@
 using namespace std;
 
 // THIS FILE CONTAINS THE STRUCTURE OF THE PACKETS WITH THEIR CODE
+# define IV_LENGTH 16
+# define HMAC_LENGTH 256
 
 // PACKET CODES
 #define BOOTSTRAP_LOGIN 1
@@ -160,17 +162,15 @@ struct bootstrap_upload
 {
     // Send through the net
     uint16_t code;
-    uint8_t iv_len;
-    string iv;
+    unsigned char* iv;
     uint32_t cipher_len;
     string ciphertext;
-    uint32_t hmac_len = 256;
-    string HMAC;
+    unsigned char* HMAC;
 
-    // Filled after deserialization_decrypted
-    uint16_t filename_len;
+    // Filled before serialization and after deserialization_decrypted
+    uint32_t filename_len;
     string filename;
-    uint16_t response; // True: upload allowed  False: upload not allowed
+    uint32_t response; // True: upload allowed  False: upload not allowed
     uint32_t counter;
     uint32_t size;
 
@@ -179,7 +179,7 @@ struct bootstrap_upload
         uint8_t *serialized_pkt = nullptr;
         int pointer_counter = 0;
 
-        len = (sizeof(code) + sizeof(iv_len) + sizeof(cipher_len) + sizeof(hmac_len) + cipher_len + iv_len + hmac_len);
+        len = (sizeof(code) + sizeof(cipher_len) + cipher_len + IV_LENGTH + HMAC_LENGTH);
 
         serialized_pkt = (uint8_t *)malloc(len);
         if (!serialized_pkt)
@@ -190,21 +190,15 @@ struct bootstrap_upload
 
         uint16_t certified_code = htons(code);
         uint32_t certif_ciph_len = htonl(cipher_len);
-        uint32_t certif_hmac_len = htonl(hmac_len);
-    
 
         // copy of the code
         memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
         pointer_counter += sizeof(code);
 
-        // adding the length of iv
-        memcpy(serialized_pkt + pointer_counter, &iv_len, sizeof(iv_len));
-        pointer_counter += sizeof(iv_len);
-
         // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_iv, iv_len);
-        pointer_counter += iv_len;
+        uint8_t *cert_iv = (uint8_t *)iv;
+        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
+        pointer_counter += IV_LENGTH;
 
         // adding the ciphertext length
         memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
@@ -215,14 +209,10 @@ struct bootstrap_upload
         memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
         pointer_counter += cipher_len;
 
-        // adding the hmac length
-        memcpy(serialized_pkt + pointer_counter, &certif_hmac_len, sizeof(certif_hmac_len));
-        pointer_counter += sizeof(certif_hmac_len);
-
         // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, hmac_len);
-        pointer_counter += hmac_len;
+        uint8_t *cert_hmac = (uint8_t *)HMAC;
+        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
 
         return serialized_pkt;
     }
@@ -240,13 +230,11 @@ struct bootstrap_upload
             return false;
         }
 
-        // copy iv_len
-        memcpy(&iv_len, serialized_pkt + pointer_counter, sizeof(iv_len));
-        pointer_counter += sizeof(iv_len);
+        iv = (unsigned char*)malloc(IV_LENGTH);
 
         // copy of the iv
-        iv.assign((char *)(serialized_pkt + pointer_counter), iv_len);
-        pointer_counter += iv_len;
+        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
+        pointer_counter += IV_LENGTH;
 
         // copy of the ciphertext length
         memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
@@ -257,47 +245,49 @@ struct bootstrap_upload
         ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
         pointer_counter += cipher_len;
 
-        // copy of the HMAC length
-        memcpy(&hmac_len, serialized_pkt + pointer_counter, sizeof(hmac_len));
-        hmac_len = ntohl(hmac_len);
-        pointer_counter += sizeof(hmac_len);
+        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
 
         // copy of the ciphertext
-        HMAC.assign((char *)(serialized_pkt + pointer_counter), hmac_len);
-        pointer_counter += hmac_len;
+        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
 
         return true;
     }
 
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
-        int pointer_counter = 0;
 
-        // copy filename_len
-        memcpy(&filename_len, serialized_decrypted_pkt + pointer_counter, sizeof(filename_len));
-        filename_len = ntohs(filename_len);
-        pointer_counter += sizeof(filename_len);
-
-        // copy of the filename
-        filename.assign((char *)(serialized_decrypted_pkt + pointer_counter), filename_len);
-        pointer_counter += filename_len;
-
-        // copy of the response
-        memcpy(&response, serialized_decrypted_pkt + pointer_counter, sizeof(response));
-        response = ntohs(response);
-        pointer_counter += sizeof(response);
-
-        // copy of the counter
-        memcpy(&counter, serialized_decrypted_pkt + pointer_counter, sizeof(counter));
-        counter = ntohl(counter);
-        pointer_counter += sizeof(counter);
-
-        // copy of the size
-        memcpy(&size, serialized_decrypted_pkt + pointer_counter, sizeof(size));
-        size = ntohl(size);
-        pointer_counter += sizeof(size);
+        string s = (char*)serialized_decrypted_pkt;
+        string delimiter = " ";
+        unsigned int pos;
+        //Extract the filename length
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            filename_len = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the filename
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            filename = s.substr(0, pos);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the counter
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            counter = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the size
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            filename_len = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
 
         return true;
-
     }
 
 };

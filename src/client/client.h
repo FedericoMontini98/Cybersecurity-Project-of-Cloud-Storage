@@ -21,6 +21,7 @@
 # define FILE_FRAGMENTS_SIZE 4096
 # define FILE_PATH "./users/"
 # define FILE_MAX_SIZE 4294967296
+# define IV_LENGTH 16
 
 // MAYBE ADD SEND AND RECV BUFFER
 class Client{

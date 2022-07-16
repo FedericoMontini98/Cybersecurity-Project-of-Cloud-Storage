@@ -810,38 +810,89 @@ int Client::upload(string username){
         return -1;
     }
 
-    //Check if on server side there is a file with the same name
+    /******************************************************/
+    /******* Phase 1: send iv + encrypt_msg + HMAC ********/
+
+    //Phase needed to check if on the server is present another file with the same name of the one that the user want to upload
+    //The server will send an ACK or NACK depending on its disponibility to recive the file
+
     //Packet initialization
     bootstrap_upload pkt;
     pkt.code = BOOTSTRAP_UPLOAD;
     pkt.filename = filename;
+    pkt.filename_len = strlen(filename.c_str());
     pkt.response = 0;
     pkt.counter = counter;
     pkt.size = size_file;
 
-    //Serialization of the data-structure
-    int size_pkt;
-    unsigned char* buffer = (unsigned char *)pkt.serialize_message(size_pkt);
-
-    unsigned char* iv = this->iv;
+    unsigned char* iv = (unsigned char*)malloc(IV_LENGTH);
     unsigned char* ciphertext;
-    int cipherlen; 
+    int cipherlen;
 
-    /******************************************************/
-    /******* Phase 1: send iv + encrypt_msg + HMAC ********/
+    // Prepare the plaintext to encrypt
+    string buffer =  to_string(pkt.filename_len) + " " + filename + " " + to_string(pkt.response) + " " + to_string(pkt.counter) + " " + to_string(pkt.size);
 
-    //Message encryption
-    if(cbc_encrypt_fragment(buffer, size_pkt, iv, ciphertext, cipherlen)!=0){
+    // Encryption
+    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), iv, ciphertext, cipherlen)!=0){
         cout<<"Error during encryption"<<endl;
         return -1;
     }
+
+    // Get the HMAC
+    uint32_t MAC_len; 
+    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    unsigned char* HMAC;
+    memcpy(MACStr,iv, IV_LENGTH);
+    memcpy(MACStr + 16,ciphertext,cipherlen);
+
+
+    //Initialization of the data to serialize
+    pkt.ciphertext = (const char*)ciphertext;
+    pkt.cipher_len = cipherlen;
+    pkt.iv = iv;
+    generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,50000); 
+    pkt.HMAC = HMAC;
+
+
+    unsigned char* data;
+    int data_length;
+    data = (unsigned char*)pkt.serialize_message(data_length);
+    /***************************************************************************************/
+    // TEST -> REMEMBER TO DESTROY THE IV ON THE PACKET BEFORE DESTROYING THE PACKET ITSELF!
+    bootstrap_upload rcvd_pkt;
+    rcvd_pkt.deserialize_message(data);
+
+    //HMAC Verification
+    if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
+        cout<<"HMAC cant be verified, try again"<<endl;
+    }
+    free(rcvd_pkt.HMAC);
+
+    unsigned char* plaintxt;
+    int ptlen;
+    //Decrypt the ciphertext and obtain the plaintext
+    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,rcvd_pkt.iv,plaintxt,ptlen)!=0){
+        cout<<"Error during encryption"<<endl;
+        return -1;
+    }
+    //Parsing and pkt parameters setted
+    rcvd_pkt.deserialize_plaintext(plaintxt);
+    if(DEBUG){
+        cout<<"You received the following cripted message: "<<endl;
+        cout<<"Code: "<<rcvd_pkt.code<<";\n filename_len:"<<rcvd_pkt.filename_len<<";\n filename:"<<rcvd_pkt.filename<<";\n counter:"<<rcvd_pkt.counter<<";\n size: "<<rcvd_pkt.size<<endl;
+    }
+    //this->iv = rcvd_pkt.iv;
+    free(rcvd_pkt.iv); //TODO ON SERVER SIDE!
+
+    /* END OF TEST */
+    /************************************************************************************************/
     
     //Send the iv
-    if(!send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()))){
+    if(!send_message((void *)data, data_length)){
         cout<<"Error during send #1"<<endl;
         return -1;
     }
-
+/*
     //send the cyphertext
     if(!send_message((void*)ciphertext, cipherlen)){
         cout<<"Error during send #2"<<endl;
@@ -851,7 +902,7 @@ int Client::upload(string username){
     //Generation of the HMAC
     //generate_HMAC()
     //send the HMAC
-    //if(!send_message((void*)hmac, /*hmacsize*/)){
+    //if(!send_message((void*)hmac, /*hmacsize)){
     //  cout<<"Error during send #3"<<endl;
     //  return;
     //}
@@ -860,7 +911,7 @@ int Client::upload(string username){
 
     /******************************************************/
     /******** Phase 2: receive encrypt_msg + HMAC *********/
-    uint32_t size;
+    /*uint32_t size;
     //receive the encrypted message
     if(receive_message(ciphertext,size)!=0){
         cout<<"Error during a receive"<<endl;
@@ -892,22 +943,22 @@ int Client::upload(string username){
     */
 
     //pkt.deserialize_message(buffer);    //TODO
-
+/*
     if(pkt.response == false){
         cout<<"A file with this name is already in the cloud, rename it locally and try again"<<endl;
         return -1;
     }
 
     counter++;
-
+*/
     /******************************************************/
     /************* Phase 3: send file chunks **************/
-
+/*
     if(send_encrypted_file (filename, iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()),counter)!=0){
         cout << "Error during phase 3 of the upload" << endl;
         return -1;
     }
-
+*/
     /******************************************************/
     /*********** Phase 4: send completion msg *************/
 
@@ -918,8 +969,8 @@ int Client::upload(string username){
     
     //Free the allocated space
     free(ciphertext);
-    free(buffer);
-    free(this->iv);
+    //free(buffer);
+    free(iv);
     return 0;
 }
 
@@ -991,7 +1042,7 @@ int Client::download(string username){
 }
 
 // RUN
-int Client::run(){
+/*int Client::run(){
     try {
 
         // establish session and HMAC key
@@ -1100,7 +1151,7 @@ int Client::run(){
         //Clear the cin flag
         cin.clear();
     }
-}
+}*/
 
 // TESTS
 
@@ -1179,4 +1230,7 @@ int Client::run(){
     return 0;
 }*/
 
+int Client::run(){
+    upload("fedem");
+}
 
