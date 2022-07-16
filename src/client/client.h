@@ -21,6 +21,7 @@
 # define FILE_FRAGMENTS_SIZE 4096
 # define FILE_PATH "./users/"
 # define FILE_MAX_SIZE 4294967296
+# define IV_LENGTH 16
 
 // MAYBE ADD SEND AND RECV BUFFER
 class Client{
@@ -66,5 +67,5 @@ class Client{
     uint32_t file_exists_to_download(string filename, string username);
 
     // packets methods
-    int send_login_boostrap();
+    int send_login_bootstrap(login_bootstrap_pkt& pkt);
 };

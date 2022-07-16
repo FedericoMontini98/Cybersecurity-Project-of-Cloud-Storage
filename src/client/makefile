@@ -4,9 +4,9 @@ CFLAGS = -c -Wall
 
 all: client.exe
 
-client.exe: main.o client.o utility.o
+client.exe: main.o client.o utility.o hashing_util.o
 
-	$(CC) main.o client.o utility.o $(LFLAGS) -o client.exe 
+	$(CC) main.o client.o utility.o hashing_util.o $(LFLAGS) -o client.exe 
 	#$(CC) $(LFLAGS) main.o client.o -o client.exe
 
 client.o: client.cpp
@@ -16,6 +16,10 @@ client.o: client.cpp
 utility.o: ./../common/utility.cpp ./../common/utility.h
 	
 	$(CC) $(CFLAGS) ./../common/utility.cpp
+
+hashing_util.o: ./../common/hashing/hashing_util.cpp
+
+	$(CC) $(CFLAGS) ./../common/hashing/hashing_util.cpp
 
 main.o: main.cpp
 

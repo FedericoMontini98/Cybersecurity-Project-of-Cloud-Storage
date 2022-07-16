@@ -1,13 +1,19 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <openssl/rand.h>
 #include <thread>
+#include <fstream>
 #include <cstring>
+#include <string>
 #include <openssl/ssl.h>
+#include <vector>
+#include <string.h>
 #include "./../common/communication_packets.h"
 
 # define DEBUG true
 # define BACKLOG_QUEUE_SIZE  10
+# define FILE_FRAGMENTS_SIZE 4096
 
 class Server {
     int listener_socket = -1;
@@ -30,6 +36,7 @@ class Worker {
     Server* server;
     int socket_fd;
     sockaddr_in client_addr;
+	string filename_certificate = "./Server_cert.pem";
 
     /* must be freed */
     // when a new iv is generated this variable must be freed
@@ -45,8 +52,18 @@ class Worker {
 
     Worker(Server* server, const int socket, const sockaddr_in addr);
     ~Worker();
-    int receive_message();
+	bool send_message(void* msg, const uint32_t len);
+    int receive_message(unsigned char*& recv_buffer, uint32_t& len);
+	int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
+	int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
     int handle_command(unsigned char* cmd);
+	bool load_private_server_key();
+	EVP_PKEY* generate_sts_key_param();
+	X509* get_certificate();
+	bool check_username(string username);
+	bool generate_iv (const EVP_CIPHER* cipher);
+	bool init_session();
+	int send_login_server_authentication(login_authentication_pkt& pkt);
 
     void run();
 

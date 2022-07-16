@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include "client.h"
+#include "./../common/hashing/hashing_util.h"
 #include "./../common/utility.h"
 #include <sys/stat.h>
 #include <sstream>
@@ -54,7 +55,7 @@ bool Client::extract_private_key(string _username, string password){
     return true;
 }
 
-// send a message through socket and free msg
+// send a message through socket
 bool Client::send_message(void* msg, const uint32_t len){
     
     ssize_t ret;
@@ -77,8 +78,8 @@ bool Client::send_message(void* msg, const uint32_t len){
         cerr << "Error: message not sent" << endl;
         return false;
     }
-
-    return true; 
+	
+    return true;
 }
 
 // receive a message from socket
@@ -287,19 +288,18 @@ bool Client::generate_iv (const EVP_CIPHER* cipher){
 // HANDLE FREE ONLY ON ERROR
 int Client::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, 
 int& cipherlen){
-
-    int outlen;
+	int outlen;
     int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
     int ret;
 
     EVP_CIPHER_CTX* ctx;
-
-    if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
+	
+	if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
         cerr << "message length is not allowed" << endl;
         return -1;
     }
-
-    try {
+	
+	try {
          // buffer for the ciphertext + padding
         ciphertext = (unsigned char*)malloc(msg_len + block_size);
 		if (!ciphertext) {
@@ -373,22 +373,23 @@ int& cipherlen){
     }
 
     return 0;
+    
 }
 
 // function to decrypt fragments
 // this function will set plaintext and plainlen arguments
 int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen){
-    int outlen;
+	int outlen;
     int ret;
 
     EVP_CIPHER_CTX* ctx;
-
+	
     if (cipherlen == 0 || cipherlen > FILE_FRAGMENTS_SIZE) {
-        cerr << "ERR: input cipher fragment exceeds the maximum size" << endl;
+        cerr << "ERR: input cipher len not allowed" << endl;
         return -1;
     }
-
-    //error if iv is not set
+	
+	//error if iv is not set
     if (!iv){
         cerr << "ERR: missing iv for decryption" << endl;
         return -1;
@@ -461,7 +462,6 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
     }
 
     return 0;
-
 }
 
 // encrypt using cbc_encrypt but for pieces of file
@@ -531,20 +531,40 @@ int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len,
 
 // sent packet [username | sts_key_param | hmac_key_param]
 //MISS CONTROLS AND FREES
-int Client::send_login_boostrap(){
-    login_bootstrap_pkt pkt;
-
+int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
+	unsigned char* send_buffer;
+	int len;
+	
+    // initialize to 0 the pack
+    memset(&pkt, 0, sizeof(pkt));
+	
+	// lens will be automatically set after sending
     pkt.code = LOGIN_BOOTSTRAP;
     pkt.username = username;
+	
+	// generate dh keys
     pkt.symmetric_key_param = generate_sts_key_param();
+	
+	if (pkt.symmetric_key_param == nullptr){
+		cerr << "ERR: failed to generate session keys parameters" << endl;
+        return false;
+	}
+	
     pkt.hmac_key_param = generate_sts_key_param();
 
-    if (!pkt.hmac_key_param || !pkt.symmetric_key_param){
+    if (pkt.hmac_key_param == nullptr){
         cerr << "ERR: failed to generate session keys parameters" << endl;
         return false;
     }
 
-    if (!send_message(&pkt, sizeof(login_bootstrap_pkt))){
+	send_buffer = (unsigned char*) pkt.serialize_message(len);
+	
+	if (send_buffer == nullptr){
+		cerr << "ERR: failed to serialize login bootstrap packet" << endl;
+		return -1;
+	}
+	
+    if (!send_message(send_buffer, len)){
         cerr << "ERR: failed to send login bootstrap packet" << endl;
         return -1;
     }
@@ -557,136 +577,19 @@ int Client::send_login_boostrap(){
     
 }
 
-
-
 // generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
-int Client::generate_HMAC(EVP_MD* hmac_type, unsigned char* msg, int msg_len, unsigned char*& digest, unsigned*& digestlen){
-    int ret;
-    EVP_MD_CTX* ctx;
+int Client::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen){
+	
+	// hmac_util.cpp
+	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, FILE_FRAGMENTS_SIZE);
 
-    if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
-        cerr << "message length is not allowed" << endl;
-        return -1;
-    }
-
-    try{
-        digest = (unsigned char*) malloc(EVP_MD_size(hmac_type));
-        if (!digest){
-            cerr << "malloc of digest failed" << endl;
-            throw 1;
-        }
-
-        ctx = EVP_MD_CTX_new();
-
-        if (!ctx){
-            cerr << "context definition failed" << endl;
-            throw 2;
-        }
-
-        ret = EVP_DigestInit(ctx, hmac_type);
-
-        if (ret != 1) {
-			cerr << "failed to initialize digest creation" << endl;
-			ERR_print_errors_fp(stderr);
-			throw 3;
-		}
-
-        ret = EVP_DigestUpdate(ctx, (unsigned char*)msg, sizeof(msg)); //try or put it in input function
-
-        if (ret != 1) {
-            cerr << "failed to update digest " << endl;
-			ERR_print_errors_fp(stderr);
-			throw 4;
-        }
-
-        ret = EVP_DigestFinal(ctx, digest, digestlen);
-
-        if (ret != 1) {
-            cerr << "failed to finalize digest " << endl;
-			ERR_print_errors_fp(stderr);
-			throw 5;
-        }
-
-    }
-    catch (int error_code){
-
-        free(digest);
-        
-        if (error_code > 1){
-            EVP_MD_CTX_free(ctx);
-        }
-
-        return -1;
-
-    }
-
-    return 0;
 }
 
-// generate the sts key parameter g**a (diffie-hellman) for the session key establishment
+// generate the sts key parameter, null if an error occurs
 EVP_PKEY* Client::generate_sts_key_param(){
-    EVP_PKEY* dh_params = nullptr;
-    EVP_PKEY_CTX* dh_gen_ctx = nullptr;
-    EVP_PKEY* dh_key = nullptr;
-    int ret;
-
-    try{
-        // Allocate p and g
-        dh_params = EVP_PKEY_new();
-        if (!dh_params){
-            cerr << "ERR: fail to generate new dh params" << endl;
-            throw 0;
-        }
-
-        // set default dh parameters for p and g
-        DH* default_params = DH_get_2048_224();
-        ret = EVP_PKEY_set1_DH(dh_params, default_params);
-        
-        // no longer need of this variable
-        DH_free(default_params);
-
-        if (ret != 1) {
-            cerr << "ERR: failed to load default params" << endl;
-            throw 1;
-        }
-
-        // g^a or g^b
-        dh_gen_ctx = EVP_PKEY_CTX_new(dh_params, nullptr);
-		if (!dh_gen_ctx) {
-            cerr << "ERR: failed to load define dh context" << endl;
-            throw 2;
-        }
-
-        ret = EVP_PKEY_keygen_init(dh_gen_ctx);
-		if (ret != 1) {
-            cerr << "ERR: failed dh keygen init" << endl;
-            throw 3;
-        }
-
-		ret = EVP_PKEY_keygen(dh_gen_ctx, &dh_key);
-		if (ret != 1){ 
-            cerr << "ERR: failed dh keygen" << endl;
-            throw 4;
-        }
-    }
-    catch (int error_code){
-
-        if (error_code > 0){
-            EVP_PKEY_free(dh_params);
-        }
-        
-        if (error_code > 1) {
-            EVP_PKEY_CTX_free(dh_gen_ctx);
-        }
-
-        return nullptr;
-    }
-
-    EVP_PKEY_CTX_free(dh_gen_ctx);
-	EVP_PKEY_free(dh_params);
-
-    return dh_key;
-
+	
+	// utility.cpp
+	return generate_dh_key();
 }
 
 
@@ -708,6 +611,15 @@ bool Client::init_socket(){
 
 bool Client::init_session(){
     int ret;
+	login_bootstrap_pkt bootstrap_pkt;
+	login_authentication_pkt server_auth_pkt; 
+	login_authentication_pkt client_auth_pkt;
+	unsigned char* plaintext;
+	int plainlen;
+	
+	// receive buffer
+	unsigned char* receive_buffer;
+    uint32_t len;
     
     // initialize socket
     if (!init_socket()){
@@ -723,18 +635,64 @@ bool Client::init_session(){
 	}
 
     // send login bootstrap packet
-    if (send_login_boostrap() < 0){
-        cerr << "something goes wrong in sending login bootstrap packet" << endl;
+    if (send_login_bootstrap(bootstrap_pkt) < 0){
+        cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
         return false;
     }
-
-    unsigned char* receive_buffer;
-    uint32_t len;
-    // receive response
-    if (receive_message(receive_buffer, len) < 0){
-        cerr << "ERR: some error in receiving bootstrap login response occurred" << endl;
-        return -1;
-    }
+	
+	// receive login_server_authentication_pkt
+	while (true){
+	
+		// receive message
+		if (receive_message(receive_buffer, len) < 0){
+			cerr << "ERR: some error in receiving login_server_authentication_pkt" << endl;
+			free(receive_buffer);
+			continue;
+		}
+		
+		// check if it is consistent with server_auth_pkt
+		if (!server_auth_pkt.deserialize_message(receive_buffer)){
+			cerr << "ERR: some error in deserialize server_auth_pkt" << endl;
+			free(receive_buffer);
+			continue;
+		}
+		
+		// derive symmetric key using server_auth_pkt.symmetric_key_param_server_clear
+		
+		// symmetric_key_no_hashed = // IMPLEMENT
+		
+		// hmac_key_no_hashed = // IMPLEMENT
+		
+		// hash the keys
+		/*ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
+		
+		if (ret != 0){
+			return ret;
+		}
+		
+		ret = hash_hmac_key(hmac_key, hmac_key_no_hashed);
+		
+		if (ret != 0){
+			return ret;
+		}*/
+		
+		// decrypt the encrypted part using the derived symmetric key
+		cbc_decrypt_fragment(server_auth_pkt.encrypted_signing, server_auth_pkt.encrypted_signing_len, server_auth_pkt.iv_cbc, plaintext, plainlen);
+		
+		// extract the key from the server certificate
+		
+		// verify the signature
+		
+		// check freshness EVP_PKEY_parameters_eq()
+		
+		// correct packet
+		free(receive_buffer);
+		break;
+	}
+	
+	// free dh parameters
+	EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+	EVP_PKEY_free(bootstrap_pkt.hmac_key_param);
 
     return true;
 }
@@ -777,19 +735,21 @@ uint32_t Client::file_exists_to_download(string filename, string username){
 void Client::help(){
     cout<<"===================================== HELP ================================================="<<endl<<endl;
     cout<<"The available commands are the following:"<<endl<<endl;
-    cout<<"help: that shows all the available commands"<<endl<<endl;
-    cout<<"download fileName: Specifies a file on the server machine. The server sends the requested file to the user. The filename of any downloaded file must be the filename used to store the file on the server. If this is not possible, the file is not downloaded."<<endl<<endl;
-    cout<<"delete fileName: Specifies a file on the server machine. The server asks the user for confirmation. If the user confirms, the file is deleted from the server. "<<endl<<endl;
-    cout<<"upload fileName: Specifies a filename on the client machine and sends it to the server. The server saves the uploaded file with the filename specified by the user. If this is not possible, the file is not uploaded. The max file size is 4GiB"<<endl<<endl;
-    cout<<"list: The client asks to the server the list of the filenames of the available files in his dedicated storage. The client prints to screen the list."<<endl<<endl;
-    cout<<"rename fileName newName: Specifies a file on the server machine. Within the request, the clients sends the new filename. If the renaming operation is not possible, the filename is not changed."<<endl<<endl;
-    cout<<"logout: The client gracefully closes the connection with the server. "<<endl;
+    cout<<"help : \tthat shows all the available commands"<<endl<<endl;
+    cout<<"download : \tSpecifies a file on the server machine. The server sends the requested file to the user. The filename of any downloaded file must be the filename used to store the file on the server. If this is not possible, the file is not downloaded."<<endl<<endl;
+    cout<<"delete : \tSpecifies a file on the server machine. The server asks the user for confirmation. If the user confirms, the file is deleted from the server. "<<endl<<endl;
+    cout<<"upload : \tSpecifies a filename on the client machine and sends it to the server. The server saves the uploaded file with the filename specified by the user. If this is not possible, the file is not uploaded. The max file size is 4GiB"<<endl<<endl;
+    cout<<"list: \tThe client asks to the server the list of the filenames of the available files in his dedicated storage. The client prints to screen the list."<<endl<<endl;
+    cout<<"rename : \tSpecifies a file on the server machine. Within the request, the clients sends the new filename. If the renaming operation is not possible, the filename is not changed."<<endl<<endl;
+    cout<<"logout: \tThe client gracefully closes the connection with the server. "<<endl;
     cout<<"============================================================================================"<<endl<<endl; 
 }
 
-/**Function that manage the upload command, takes as a parameter the name of the file that the user want to upload. The file must be located in a specific directory.
- *  @filename : name of the file that the user wants to upload 
- *  @username : the username used to log in
+/**
+ * Function that manage the upload command, takes as a parameter the name of the file that the user want to upload. The file must be located in a specific directory.
+ * 
+ * @param username: name of the file that the user wants to upload
+ * @return int: exit param
  */
 int Client::upload(string username){
     uint32_t counter = 0;
@@ -815,116 +775,246 @@ int Client::upload(string username){
         return -1;
     }
 
-    //Check if on server side there is a file with the same name
+    /******************************************************/
+    /******* Phase 1: send iv + encrypt_msg + HMAC ********/
+
+    //Phase needed to check if on the server is present another file with the same name of the one that the user want to upload
+    //The server will send an ACK or NACK depending on its disponibility to recive the file
+
     //Packet initialization
     bootstrap_upload pkt;
     pkt.code = BOOTSTRAP_UPLOAD;
     pkt.filename = filename;
+    pkt.filename_len = strlen(filename.c_str());
     pkt.response = 0;
     pkt.counter = counter;
     pkt.size = size_file;
 
-    //Serialization of the data-structure
-    int size_pkt;
-    unsigned char* buffer = (unsigned char *)pkt.serialize_message(size_pkt);
-
-    unsigned char* iv = this->iv;
+    unsigned char* iv = (unsigned char*)malloc(IV_LENGTH);
     unsigned char* ciphertext;
-    int cipherlen; 
+    int cipherlen;
 
-    /******************************************************/
-    /******* Phase 1: send iv + encrypt_msg + HMAC ********/
+    // Prepare the plaintext to encrypt
+    string buffer =  to_string(pkt.filename_len) + " " + filename + " " + to_string(pkt.response) + " " + to_string(pkt.counter) + " " + to_string(pkt.size);
 
-    //Message encryption
-    if(cbc_encrypt_fragment(buffer, size_pkt, iv, ciphertext, cipherlen)!=0){
+    // Encryption
+    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), iv, ciphertext, cipherlen)!=0){
         cout<<"Error during encryption"<<endl;
         return -1;
     }
-    
-    //Send the iv
-    if(!send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()))){
-        cout<<"Error during send #1"<<endl;
+
+    // Get the HMAC
+    uint32_t MAC_len; 
+    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    unsigned char* HMAC;
+    memcpy(MACStr,iv, IV_LENGTH);
+    memcpy(MACStr + 16,ciphertext,cipherlen);
+
+
+    //Initialization of the data to serialize
+    pkt.ciphertext = (const char*)ciphertext;
+    pkt.cipher_len = cipherlen;
+    pkt.iv = iv;
+    generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,); 
+    pkt.HMAC = HMAC;
+
+
+    unsigned char* data;
+    int data_length;
+
+    data = (unsigned char*)pkt.serialize_message(data_length);
+
+    //Send the first message
+    if(!send_message((void *)data, data_length)){
+        cout<<"Error during packet #1 forwarding"<<endl;
+        free(MACStr);
+        free(ciphertext);
         return -1;
     }
-
-    //send the cyphertext
-    if(!send_message((void*)ciphertext, cipherlen)){
-        cout<<"Error during send #2"<<endl;
-        return -1;
-    }
-
-    //Generation of the HMAC
-    //generate_HMAC()
-    //send the HMAC
-    //if(!send_message((void*)hmac, /*hmacsize*/)){
-    //  cout<<"Error during send #3"<<endl;
-    //  return;
-    //}
-
-    counter++;
-
-    /******************************************************/
-    /******** Phase 2: receive encrypt_msg + HMAC *********/
-    uint32_t size;
-    //receive the encrypted message
-    if(receive_message(ciphertext,size)!=0){
-        cout<<"Error during a receive"<<endl;
-        return -1;
-    }
-    //Get the cyphertext received size
-    int size_pt;
-    uint64_t size_ct = strlen((char*)ciphertext);
-
-    //Cyphertext decryption with session key
-    if (cbc_decrypt_fragment(ciphertext,size_ct, iv, buffer, size_pt) != 0){
-        cout << "Error during decryption" << endl;
-        return -1;
-    }
-
-    //receive the encrypted message
-    /*
-    if(receive_message(&HMAC)!=0){
-        cout<<"Error during the communication with the server"<<endl;
-        return -1;
-    }*/
-
-    //TODO 
-    //CHECK HMAC VALIDITY
-    /*if(!check_HMAC(HMAC,cyphertext, iv, counter)){
-        cout<<"received HMAC not valid"<<endl;
-        return;
-    }
-    */
-
-    //pkt.deserialize_message(buffer);    //TODO
-
-    if(pkt.response == false){
-        cout<<"A file with this name is already in the cloud, rename it locally and try again"<<endl;
-        return -1;
-    }
-
-    counter++;
-
-    /******************************************************/
-    /************* Phase 3: send file chunks **************/
-
-    if(send_encrypted_file (filename, iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()),counter)!=0){
-        cout << "Error during phase 3 of the upload" << endl;
-        return -1;
-    }
-
-    /******************************************************/
-    /*********** Phase 4: send completion msg *************/
-
-
-
-    /******************************************************/
-    /*********** Phase 5: send completion msg *************/
-    
-    //Free the allocated space
+    free(MACStr);
     free(ciphertext);
-    free(buffer);
-    free(this->iv);
+    counter++;
+    
+    /***************************************************************************************/
+    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
+
+    uint32_t length_rec;
+
+    if(!receive_message(data, length_rec)){
+        cerr << "ERR: some error in receiving MSG2 in upload" << endl;
+		free(data);
+		return -2;
+    }
+
+    bootstrap_upload rcvd_pkt;
+    if(!rcvd_pkt.deserialize_message(data)){
+        cerr<<"Received the wrong packet!"<<endl;
+        return -2;
+    }
+
+    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    memcpy(MACStr,iv, IV_LENGTH);
+    memcpy(MACStr + 16,ciphertext,rcvd_pkt.cipher_len);
+
+    //Generate the HMAC on the receiving side iv||ciphertext    //Usa generate HMAC
+    generate_HMAC()
+    ge(MACStr,rcvd_pkt.cipher_len,HMAC,MAC_len,50000);
+    //Free
+    free(MACStr);
+
+    //HMAC Verification
+    if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
+        cout<<"HMAC cant be verified, try again"<<endl;
+        return -2;
+    }
+
+    unsigned char* plaintxt;
+    int ptlen;
+
+    //Decrypt the ciphertext and obtain the plaintext
+    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,rcvd_pkt.iv,plaintxt,ptlen)!=0){
+        cout<<"Error during encryption"<<endl;
+        return -2;
+    }
+
+    //Parsing and pkt parameters setting, it also free 'plaintxt'
+    rcvd_pkt.deserialize_plaintext(plaintxt);
+
+    if(DEBUG){
+        cout<<"You received the following cripted message: "<<endl;
+        cout<<"Code: "<<rcvd_pkt.code<<";\n filename_len:"<<rcvd_pkt.filename_len<<";\n filename:"<<rcvd_pkt.filename<<";\n counter:"<<rcvd_pkt.counter<<";\n size: "<<rcvd_pkt.size<<endl;
+    }
+    // Check on rcvd packets values
+    if( rcvd_pkt.counter != counter ){
+        cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
+        return -2;
+    }
+    // Check the response of the server
+    if( rcvd_pkt.response != 1){
+        cerr<<"There is already a file with the same name on the server! Rename or delete it before uploading a new one"<<endl;
+        return -2;
+    }
+    // If the server response is '1' the server is now ready to obtain the file 
+
+    /***************************************************************************************/
+    // *************************** PHASE 2 SEND THE FILE: MSG 3 ************************** //
+
+    /* TODO ???? */
+    // REMEMBER: HANDLE THE COUNTER++
+
+    /***************************************************************************************/
+    // ******************************* SEND EOF NOTIF: MSG 5 ***************************** //
+
+    end_upload pkt;
+    pkt.code = FILE_EOF_HS;
+    pkt.response = "END";
+    pkt.counter = counter;
+
+    unsigned char* ciphertext;
+    int cipherlen;
+
+    // Prepare the plaintext to encrypt
+    string buffer =  pkt.response + " " + to_string(pkt.counter);
+
+    // Encryption
+    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), iv, ciphertext, cipherlen)!=0){
+        cout<<"Error during encryption of EOF Handshaking"<<endl;
+        return -5;
+    }
+
+    // Get the HMAC
+    MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    memcpy(MACStr,iv, IV_LENGTH);
+    memcpy(MACStr + 16,ciphertext,cipherlen);
+
+
+    //Initialization of the data to serialize
+    pkt.ciphertext = (const char*)ciphertext;
+    pkt.cipher_len = cipherlen;
+    pkt.iv = iv;
+    generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,50000); 
+    pkt.HMAC = HMAC;
+
+    unsigned char* data;
+    int data_length;
+
+    data = (unsigned char*)pkt.serialize_message(data_length);
+
+    //Send the EOF message
+    if(!send_message((void *)data, data_length)){
+        cout<<"Error during packet #5 forwarding"<<endl;
+        free(MACStr);
+        free(ciphertext);
+        return -1;
+    }
+
+    free(MACStr);
+    free(ciphertext);
+    counter++;
+
+    /***************************************************************************************/
+    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 6 ******************** //
+    uint32_t length_rec;
+
+    if(!receive_message(data, length_rec)){
+        cerr << "ERR: some error in receiving MSG2 in upload" << endl;
+		free(data);
+		return -6;
+    }
+
+    end_upload rcvd_pkt;
+    if(!rcvd_pkt.deserialize_message(data)){
+        cerr<<"Received the wrong packet!"<<endl;
+        return -6;
+    }
+
+    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    memcpy(MACStr,iv, IV_LENGTH);
+    memcpy(MACStr + 16,ciphertext,rcvd_pkt.cipher_len);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_SHA256_MAC(MACStr,rcvd_pkt.cipher_len,HMAC,MAC_len,50000);
+    //Free
+    free(MACStr);
+
+    //HMAC Verification
+    if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
+        cerr<<"Error: HMAC cant be verified"<<endl;
+        return -6;
+    }
+
+    unsigned char* plaintxt;
+    int ptlen;
+
+    //Decrypt the ciphertext and obtain the plaintext
+    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,rcvd_pkt.iv,plaintxt,ptlen)!=0){
+        cerr<<"Error during encryptionof packet #6"<<endl;
+        return -6;
+    }
+
+    //Parsing and pkt parameters setting, it also free 'plaintxt'
+    rcvd_pkt.deserialize_plaintext(plaintxt);
+
+    if(DEBUG){
+        cout<<"You received the following cripted message: "<<endl;
+        cout<<"Code: "<<rcvd_pkt.code<<";\n filename:"<<rcvd_pkt.response<<";\n counter:"<<rcvd_pkt.counter<<endl;
+    }
+
+    // Check on rcvd packets values
+    if( rcvd_pkt.counter != counter ){
+        cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
+        return -6;
+    }
+    // Check the response of the server
+    if(!strcmp(rcvd_pkt.response,"OK")){
+        cerr<<"There was a problem during the finalization of the upload!"<<endl;
+        return -6;
+    }
+
+    cout<<"***************************************************************************************"<<endl;
+    cout<<"************************ THE UPLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
+
+    free(iv);
     return 0;
 }
 
@@ -991,14 +1081,12 @@ int Client::download(string username){
     //send_message((void*)hmac, /*hmacsize*/)
 
     //ret = receive_message()
-    free(iv)
+    free(iv);
     return 0;
 }
 
 // RUN
 int Client::run(){
-    cout << "RUN" <<endl;
-
     try {
 
         // establish session and HMAC key
@@ -1010,7 +1098,8 @@ int Client::run(){
         cout << "session keys has been established correctly " << endl;
     }
     catch (int error_code) {
-
+        cout<<"Error during session initialization, exited with code: "<<error_code<<endl;
+        return -1;
     }
 
     cout<<"======================================="<<endl;
@@ -1183,6 +1272,9 @@ int Client::run(){
     
     send_message(send_buffer, len);
     return 0;
-}*/
-
-
+}
+/*
+int Client::run(){
+    upload("fedem");
+}
+*/
