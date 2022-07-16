@@ -120,6 +120,14 @@ struct login_bootstrap_pkt
         memcpy(&code, serialized_pkt, sizeof(code));
         code = ntohs(code);
         pointer_counter += sizeof(code);
+		
+		cout << code << endl;
+		
+		// pkt type mismatch
+		if (code != LOGIN_BOOTSTRAP){
+			cerr << "invalid code in login bootstrap" << endl;
+			return false;
+		}
 
         // copy username_len
         memcpy(&username_len, serialized_pkt + pointer_counter, sizeof(username_len));
@@ -143,15 +151,27 @@ struct login_bootstrap_pkt
         // copy of the symmetric parameter
         symmetric_key_param = deserialize_evp_pkey(serialized_pkt + pointer_counter, symmetric_key_param_len);
         pointer_counter += symmetric_key_param_len;
+		
+		if (symmetric_key_param == nullptr){
+			cerr << "error in deserialization of symmetric key" << endl;
+			return false;
+		}
 
         // copy of the hmac parameter
         hmac_key_param = deserialize_evp_pkey(serialized_pkt + pointer_counter, hmac_key_param_len);
+		
+		if (hmac_key_param == nullptr){
+			cerr << "error in deserialization of hmac key" << endl;
+			return false;
+		}
 
         /*
         BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
         EVP_PKEY_print_public(bp, symmetric_key_param, 1, NULL);
         BIO_free(bp);
         */
+		
+		return true;
     }
 };
 
@@ -297,37 +317,261 @@ struct bootstrap_upload
 # define LOGIN_AUTHENTICATION 3
 
 struct login_authentication_pkt {
+	//CONSTANT
+	int iv_cbc_len = EVP_CIPHER_iv_length(EVP_aes_128_cbc());
+	
 	// clear fields
     uint16_t code;
-	X509* cert;
-	uint8_t* iv_cbc;
+	uint32_t cert_len = 0;
+	uint32_t symmetric_key_param_server_clear_len;
+	uint32_t encrypted_signing_len;
+	uint8_t* iv_cbc = nullptr;
+	X509* cert = nullptr;
+	EVP_PKEY* symmetric_key_param_server_clear;
 	
 	// encrypted string
-	uint32_t encrypted_signing_len;
-	char* encrypted_signing;
+	uint8_t* encrypted_signing = nullptr;
 	
-	// Decrypted fields, set in deserialization
+	// Encrypted/Decrypted part
 	uint32_t symmetric_key_param_len_server;
     uint32_t hmac_key_param_len_server;
-	uint32_t symmetric_key_param_len;
-    uint32_t hmac_key_param_len;
+	uint32_t symmetric_key_param_len_client;
+    uint32_t hmac_key_param_len_client;
 	
 	EVP_PKEY* symmetric_key_param_server;
 	EVP_PKEY* hmac_key_param_server;
 	EVP_PKEY* symmetric_key_param_client;
 	EVP_PKEY* hmac_key_param_client;
+	
+	
+	// serialize the part to be encrypted/signed, this function must be called before serialized_message
+	void* serialize_part_to_encrypt(int &len){
+		uint8_t* serialized_pte;
+        void* key_buffer_symmetric_server = nullptr;     
+        void* key_buffer_hmac_server = nullptr;    
+        void* key_buffer_symmetric_client = nullptr;    
+        void* key_buffer_hmac_client = nullptr;    
+		
+        int pointer_counter = 0; 
+		
+		// evp serializations
+		key_buffer_symmetric_server = serialize_evp_pkey(symmetric_key_param_server, symmetric_key_param_len_server);
+		key_buffer_hmac_server = serialize_evp_pkey(hmac_key_param_server, hmac_key_param_len_server);
+		key_buffer_symmetric_client = serialize_evp_pkey(symmetric_key_param_client, symmetric_key_param_len_client);
+		key_buffer_hmac_client = serialize_evp_pkey(hmac_key_param_client, hmac_key_param_len_client);
+		
+		// total len of the encrypted part
+        len = sizeof(symmetric_key_param_len_server) + sizeof(hmac_key_param_len_server) + sizeof(symmetric_key_param_len_client) + 
+		sizeof(hmac_key_param_len_client) + symmetric_key_param_len_server + hmac_key_param_len_server + symmetric_key_param_len_client +
+		hmac_key_param_len_client;
 
-    void serialize_message(){
-        code = htons(code);
+        // buffer allocation for the serialized packet
+        serialized_pte = (uint8_t*) malloc(len);
+
+        if (!serialized_pte){
+            cerr << "serialized packet malloc failed" << endl;
+            return nullptr;
+        }
+		
+		// get certified lengths
+        uint32_t certified_symmetric_key_param_len_server = htonl(symmetric_key_param_len_server);
+        uint32_t certified_hmac_key_param_len_server = htonl(hmac_key_param_len_server);
+		uint32_t certified_symmetric_key_param_len_client = htonl(symmetric_key_param_len_client);
+        uint32_t certified_hmac_key_param_len_client = htonl(hmac_key_param_len_client);
+		
+		// lenght copies
+        memcpy(serialized_pte, &certified_symmetric_key_param_len_server, sizeof(certified_symmetric_key_param_len_server));
+        pointer_counter += sizeof(certified_symmetric_key_param_len_server);
+		
+		memcpy(serialized_pte + pointer_counter, &certified_hmac_key_param_len_server, sizeof(certified_hmac_key_param_len_server));
+        pointer_counter += sizeof(certified_hmac_key_param_len_server);
+		
+		memcpy(serialized_pte + pointer_counter, &certified_symmetric_key_param_len_client, sizeof(certified_symmetric_key_param_len_client));
+        pointer_counter += sizeof(certified_symmetric_key_param_len_client);
+		
+		memcpy(serialized_pte + pointer_counter, &certified_hmac_key_param_len_client, sizeof(certified_hmac_key_param_len_client));
+        pointer_counter += sizeof(certified_hmac_key_param_len_client);
+		
+		// buffer copies
+		memcpy(serialized_pte + pointer_counter, key_buffer_symmetric_server, symmetric_key_param_len_server);
+        pointer_counter += symmetric_key_param_len_server;
+		
+		memcpy(serialized_pte + pointer_counter, key_buffer_hmac_server, hmac_key_param_len_server);
+        pointer_counter += hmac_key_param_len_server;
+		
+		memcpy(serialized_pte + pointer_counter, key_buffer_symmetric_client, symmetric_key_param_len_client);
+        pointer_counter += symmetric_key_param_len_client;
+		
+		memcpy(serialized_pte + pointer_counter, key_buffer_hmac_client, hmac_key_param_len_client);
+        pointer_counter += hmac_key_param_len_client;
+		
+		return serialized_pte;
     }
 
-    bool deserialize_message(uint8_t* serialized_pkt){
-        code = ntohs(code);
+	// serialize the message with the encrypted part
+	void* serialize_message(int& len){
+		uint8_t* serialized_pkt = nullptr;  
+		void* cert_buffer = nullptr; 
+		void* key_buffer_symmetric_server_clear = nullptr;
+		int pointer_counter = 0;
 		
-		if (code != LOGIN_AUTHENTICATION){
+		if(encrypted_signing == nullptr || encrypted_signing_len == 0 || iv_cbc == nullptr || cert == nullptr){
+			
+			cerr << "missing fields for serialization" << endl;
+			return nullptr;
+		}
+		
+		//certified lenghts
+		uint16_t certified_code = htons(code);
+		uint32_t certified_encrypted_signing_len = htonl(encrypted_signing_len);
+		
+		// serialize the certificate
+		cert_buffer = serialize_certificate_X509(cert, cert_len);
+		uint32_t certified_cert_len = htonl(cert_len);
+		
+		// serialize the dh key
+		key_buffer_symmetric_server_clear = serialize_evp_pkey(symmetric_key_param_server_clear, symmetric_key_param_server_clear_len);
+		uint32_t certified_symmetric_key_server_clear_len = htonl(symmetric_key_param_server_clear_len);
+		
+		len = sizeof(certified_code) + sizeof(certified_cert_len) + sizeof(certified_symmetric_key_server_clear_len) + sizeof(certified_encrypted_signing_len) 
+		+ iv_cbc_len + cert_len + symmetric_key_param_server_clear_len + encrypted_signing_len;
+		
+		// buffer allocation for the serialized packet
+        serialized_pkt = (uint8_t*) malloc(len);
+
+        if (!serialized_pkt){
+            cerr << "serialized packet malloc failed" << endl;
+            return nullptr;
+        }
+		
+		// copy code
+		memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
+		pointer_counter += sizeof(certified_code);
+		
+		// copy lengths
+		memcpy(serialized_pkt + pointer_counter, &certified_cert_len, sizeof(certified_cert_len));
+		pointer_counter += sizeof(certified_cert_len);
+		
+		memcpy(serialized_pkt + pointer_counter, &certified_symmetric_key_server_clear_len, sizeof(certified_symmetric_key_server_clear_len));
+		pointer_counter += sizeof(certified_symmetric_key_server_clear_len);
+		
+		memcpy(serialized_pkt + pointer_counter, &certified_encrypted_signing_len, sizeof(certified_encrypted_signing_len));
+		pointer_counter += sizeof(encrypted_signing_len);
+
+		// copy fields
+		memcpy(serialized_pkt + pointer_counter, iv_cbc, iv_cbc_len);
+		pointer_counter += iv_cbc_len;
+		
+		memcpy(serialized_pkt + pointer_counter, cert_buffer, cert_len);
+		pointer_counter += cert_len;
+		
+		memcpy(serialized_pkt + pointer_counter, key_buffer_symmetric_server_clear, symmetric_key_param_server_clear_len);
+		pointer_counter += symmetric_key_param_server_clear_len;
+		
+		memcpy(serialized_pkt + pointer_counter, encrypted_signing, encrypted_signing_len);
+		
+		return serialized_pkt;
+	}
+	
+	// deserialize the message with the encrypted part, this function must be called before deserialize_encrypted_part
+    bool deserialize_message(uint8_t* serialized_pkt){
+		int pointer_counter = 0;
+
+        // copy of the code
+        memcpy (&code, serialized_pkt, sizeof(code));
+        code = ntohs(code);
+        pointer_counter += sizeof(code);
+		
+		// pkt type mismatch
+		if (code != LOGIN_BOOTSTRAP){
 			return false;
 		}
+		
+		// copy cert_len
+		memcpy (&cert_len, serialized_pkt + pointer_counter, sizeof(cert_len));
+        cert_len = ntohl(cert_len);
+        pointer_counter += sizeof(cert_len);
+		
+		// copy of dh key in clear len
+		memcpy (&symmetric_key_param_server_clear_len, serialized_pkt + pointer_counter, sizeof(symmetric_key_param_server_clear_len));
+        symmetric_key_param_server_clear_len = ntohl(symmetric_key_param_server_clear_len);
+        pointer_counter += sizeof(symmetric_key_param_server_clear_len);
+		
+		// copy of encrypted_signing_len
+		memcpy (&encrypted_signing_len, serialized_pkt + pointer_counter, sizeof(encrypted_signing_len));
+        encrypted_signing_len = ntohl(encrypted_signing_len);
+        pointer_counter += sizeof(encrypted_signing_len);
+		
+		// copy of iv_cbc
+		memcpy (iv_cbc, serialized_pkt + pointer_counter, iv_cbc_len);
+        pointer_counter += iv_cbc_len;
+		
+		// copy of certificate
+		cert = deserialize_certificate_X509 (serialized_pkt + pointer_counter, cert_len);
+		pointer_counter += cert_len;
+		
+		// copy of dh key
+		symmetric_key_param_server_clear = deserialize_evp_pkey(serialized_pkt + pointer_counter, symmetric_key_param_server_clear_len);
+		pointer_counter += symmetric_key_param_server_clear_len;
+		
+		// point to encrypted part
+		encrypted_signing =  serialized_pkt + pointer_counter;
+		
+		/*
+        BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
+        EVP_X509_print_public(bp, cert, 1, NULL);
+        BIO_free(bp);
+        */
     }
+	
+	// deserialize the decripted part 
+	bool deserialize_encrypted_part(uint8_t* plaintext){
+		int pointer_counter = 0;
+		
+		// length copies
+        memcpy(&symmetric_key_param_len_server, plaintext, sizeof(symmetric_key_param_len_server));
+		symmetric_key_param_len_server = ntohl(symmetric_key_param_len_server);
+        pointer_counter += sizeof(symmetric_key_param_len_server);
+		
+		memcpy(&hmac_key_param_len_server, plaintext + pointer_counter, sizeof(hmac_key_param_len_server));
+		hmac_key_param_len_server = ntohl(hmac_key_param_len_server);
+        pointer_counter += sizeof(hmac_key_param_len_server);
+		
+		memcpy(&symmetric_key_param_len_client, plaintext + pointer_counter, sizeof(symmetric_key_param_len_client));
+		symmetric_key_param_len_client = ntohl(symmetric_key_param_len_client);
+        pointer_counter += sizeof(symmetric_key_param_len_client);
+		
+		memcpy(&hmac_key_param_len_client, plaintext + pointer_counter, sizeof(hmac_key_param_len_client));
+		hmac_key_param_len_client = ntohl(hmac_key_param_len_client);
+        pointer_counter += sizeof(hmac_key_param_len_client);
+
+		// key deserialization
+		symmetric_key_param_server = deserialize_evp_pkey(plaintext + pointer_counter, symmetric_key_param_len_server);
+		pointer_counter += symmetric_key_param_len_server;
+		
+		hmac_key_param_server = deserialize_evp_pkey(plaintext + pointer_counter, hmac_key_param_len_server);
+		pointer_counter += hmac_key_param_len_server;
+		
+		symmetric_key_param_client = deserialize_evp_pkey(plaintext + pointer_counter, symmetric_key_param_len_client);
+		pointer_counter += symmetric_key_param_len_client;
+		
+		hmac_key_param_client = deserialize_evp_pkey(plaintext + pointer_counter, hmac_key_param_len_client);
+		pointer_counter += hmac_key_param_len_client;
+		
+		if (symmetric_key_param_server == nullptr || hmac_key_param_server == nullptr || symmetric_key_param_client == nullptr || hmac_key_param_client == nullptr){
+			
+			return false;
+		}
+		
+		/*
+        BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
+        EVP_PKEY_print_public(bp, symmetric_key_param_server, 1, NULL);
+        BIO_free(bp);
+        */
+		
+		return true;
+
+	}	
 };
 
 /*********************************************************************************************************************************/
