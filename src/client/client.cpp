@@ -470,11 +470,10 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
  * Function that send the specified file through chunks of specified max size
  * 
  * @param filename : name of the file to send
- * @param iv : iv to generate the HMAC
  * @param counter : current counter number
  * @return int : result of the operation
  */
-int Client::send_encrypted_file (string filename, unsigned char* iv, uint32_t& counter){
+int Client::send_encrypted_file (string filename, uint32_t& counter){
     unsigned char* buffer;
     // build a string that cointain the path of the file
     string path = FILE_PATH + this->username + "/Upload/" + filename;
@@ -948,7 +947,7 @@ int Client::upload(string username){
     /***************************************************************************************/
     // *************************** PHASE 2 SEND THE FILE: MSG 3 ************************** //
 
-    if(!send_encrypted_file(filename,iv, counter)){
+    if(!send_encrypted_file(filename, counter)){
         cerr<<"error during the upload of the file"<<endl;
         return -3;
     }
