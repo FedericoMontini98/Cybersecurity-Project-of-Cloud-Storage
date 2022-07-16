@@ -7,7 +7,7 @@
 #include "./../common/utility.h"
 #include <sys/stat.h>
 #include <sstream>
-
+#include <math.h>
 
 // CONSTRUCTOR
 Client::Client(const uint16_t _port){
@@ -464,68 +464,102 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
     return 0;
 }
 
-// encrypt using cbc_encrypt but for pieces of file
-int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint32_t& counter){
+/**
+ * Function that send the specified file through chunks of specified max size
+ * 
+ * @param filename : name of the file to send
+ * @param iv : iv to generate the HMAC
+ * @param counter : current counter number
+ * @return int : result of the operation
+ */
+int Client::send_encrypted_file (string filename, unsigned char* iv, uint32_t& counter){
     unsigned char* buffer;
-
-    // check filename on whitelist
-    if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
-    {
-        std::cerr << "ERR: filename check on whitelist fails" << endl;
-        return -1;
-    }
-
-    FILE* file = fopen(filename.c_str(), "rb"); 
-
+    // build a string that cointain the path of the file
+    string path = FILE_PATH + this->username + "/Upload/" + filename;
+    //open the file
+    FILE* file = fopen(path.c_str(), "rb"); 
+    // If !file the file cant be open or is not present inside the dir
     if (!file){
         return false;
     }
+    struct stat buf;
+    if (stat(path.c_str(),&buf)!=0){ //stat failed
+        cout<<"Failed stat function: File doesn't exists in the Upload dir"<<endl;
+        return 0;
+    }
 
+    //Calculate the number of chunks to send
+    size_t num_chunk_to_send = ceil((float)buf.st_size/4096);
+    if(DEBUG){
+        cout << "Number of chunks: " << num_chunk_to_send << endl << endl;
+    }
+
+    buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
+    if(!buffer){            
+        cerr << "ERR: cannot allocate a buffer for the file fragment" << endl;
+        return -1;
+    }
+    memset(buffer,0,FILE_FRAGMENTS_SIZE);
     int ret;
-
-    // read while eof
-    while ( !feof(file) ){
-        buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
-
-        if (!buffer) {
-            std::cerr << "ERR: cannot allocate a buffer for the file fragment" << endl;
-            return -1;
-        }
+    //Start to send the chunks
+    for(size_t i = 0; i < num_chunk_to_send; ++i){
 
         // read bytes from file, the pointer is automatically increased
         ret = fread(buffer, 1, FILE_FRAGMENTS_SIZE, file);
-
         if ( ferror(file) != 0 ){
             std::cerr << "ERR: file reading error occured" << endl;
             return -1;
         }
-
-        unsigned char* ct;
-        int len_ct;
-
-        /*file_upload pkt;
+        //Declare a new packet & init its fields
+        file_upload pkt;
         pkt.code = FILE_UPLOAD;
-        pkt.msg = buffer;
-        pkt.counter = counter;*/
+        pkt.counter = counter;
+        pkt.msg_len = ret;
+        pkt.msg = (unsigned char*)buffer;
 
-        uint32_t cipherlen = strlen((char*)ct);
+        unsigned char* ciphertext;
+        int cipherlen;
 
-        //buffer = pkt.serialize_message();
-
-        cbc_encrypt_fragment(buffer, ret, this->iv, ct, len_ct);
-
-        if(!send_message((void*)ct, cipherlen)){
-            cout<<"Error: send of a fragment failed"<<endl;
+        string to_encrypt = to_string(pkt.code) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.msg_len) + "$" + reinterpret_cast<char*>(pkt.msg);
+        if(cbc_encrypt_fragment((unsigned char*)to_encrypt.c_str(), strlen(to_encrypt.c_str()) , iv, ciphertext, cipherlen) != 0){
+            cerr<<"Failed encryption during the file send"<<endl;
             return -1;
-        }   
+        }
 
-        //HMAC SEND TODO
+        // Get the HMAC
+        uint32_t MAC_len; 
+        unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+        unsigned char* HMAC;
+        memcpy(MACStr,iv, IV_LENGTH);
+        memcpy(MACStr + 16,ciphertext,cipherlen);
 
+        pkt.ciphertext = (const char*)ciphertext;
+        pkt.cipher_len = cipherlen;
+        generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
+        pkt.HMAC = HMAC;
+
+        //Initialization of the data to serialize
+        unsigned char* data;
+        int data_length;
+
+        data = (unsigned char*)pkt.serialize_message(data_length);
+
+        //Send the first message
+        if(!send_message((void *)data, data_length)){
+            cout<<"Error during packet #1 forwarding"<<endl;
+            free(MACStr);
+            free(ciphertext);
+            return -1;
+        }
+
+
+        free(MACStr);
+        free(ciphertext);
         counter++;
-        free(ct);
-        free(buffer);
+        memset(buffer,0,FILE_FRAGMENTS_SIZE);
     }
 
+    free(buffer);
     return 0;
 }
 
@@ -697,9 +731,12 @@ bool Client::init_session(){
     return true;
 }
 
-/**Check the existance of the file inside the upload directory
- *  @filename : file of which we have to check the existance
- *  @username : needed to find the current user directory 
+/**
+ * Check the existance of the file inside the upload directory
+ * 
+ * @param filename : file name to check
+ * @param username : user that what to upload
+ * @return uint32_t : 0 -> wrong >0 -> correct result
  */
 uint32_t Client::file_exists(string filename, string username){
     string path = FILE_PATH + username + "/Upload/" + filename;
@@ -730,7 +767,9 @@ uint32_t Client::file_exists_to_download(string filename, string username){
     return -1;
 }
 
-/** Help function that shows all the available commands to the user
+/**
+ * Help function that shows all the available commands to the user
+ * 
  */
 void Client::help(){
     cout<<"===================================== HELP ================================================="<<endl<<endl;
@@ -795,7 +834,7 @@ int Client::upload(string username){
     int cipherlen;
 
     // Prepare the plaintext to encrypt
-    string buffer =  to_string(pkt.filename_len) + " " + filename + " " + to_string(pkt.response) + " " + to_string(pkt.counter) + " " + to_string(pkt.size);
+    string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size);
 
     // Encryption
     if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), iv, ciphertext, cipherlen)!=0){
@@ -815,7 +854,7 @@ int Client::upload(string username){
     pkt.ciphertext = (const char*)ciphertext;
     pkt.cipher_len = cipherlen;
     pkt.iv = iv;
-    //generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,); 
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
     pkt.HMAC = HMAC;
 
 
@@ -854,11 +893,10 @@ int Client::upload(string username){
 
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr,iv, IV_LENGTH);
-    memcpy(MACStr + 16,ciphertext,rcvd_pkt.cipher_len);
+    memcpy(MACStr + 16,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
 
-    //Generate the HMAC on the receiving side iv||ciphertext    //Usa generate HMAC
-    //generate_HMAC()
-    //ge(MACStr,rcvd_pkt.cipher_len,HMAC,MAC_len,50000);
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
     //Free
     free(MACStr);
 
@@ -878,7 +916,10 @@ int Client::upload(string username){
     }
 
     //Parsing and pkt parameters setting, it also free 'plaintxt'
-    rcvd_pkt.deserialize_plaintext(plaintxt);
+        if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
+        return -2;
+    }
 
     if(DEBUG){
         cout<<"You received the following cripted message: "<<endl;
@@ -895,16 +936,19 @@ int Client::upload(string username){
         return -2;
     }
     free(ciphertext);
+    counter++;
     // If the server response is '1' the server is now ready to obtain the file 
 
     /***************************************************************************************/
     // *************************** PHASE 2 SEND THE FILE: MSG 3 ************************** //
 
-    /* TODO ???? */
-    // REMEMBER: HANDLE THE COUNTER++
+    if(!send_encrypted_file(filename,iv, counter)){
+        cerr<<"error during the upload of the file"<<endl;
+        return -3;
+    }
 
     /***************************************************************************************/
-    // ******************************* SEND EOF NOTIF: MSG 5 ***************************** //
+    // ******************************* SEND EOF NOTIF: MSG 4 ***************************** //
 
     end_upload pkt_end_1;
     pkt_end_1.code = FILE_EOF_HS;
@@ -912,7 +956,7 @@ int Client::upload(string username){
     pkt_end_1.counter = counter;
 
     // Prepare the plaintext to encrypt
-    buffer =  pkt_end_1.response + " " + to_string(pkt_end_1.counter);
+    buffer =  to_string(pkt_end_1.code) + "$" + pkt_end_1.response + "$" + to_string(pkt_end_1.counter);
 
     // Encryption
     if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), iv, ciphertext, cipherlen)!=0){
@@ -929,7 +973,7 @@ int Client::upload(string username){
     //Initialization of the data to serialize
     pkt_end_1.ciphertext = (const char*)ciphertext;
     pkt_end_1.cipher_len = cipherlen;
-    //generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,50000); 
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC, MAC_len);
     pkt_end_1.HMAC = HMAC;
 
     data = (unsigned char*)pkt_end_1.serialize_message(data_length);
@@ -947,7 +991,7 @@ int Client::upload(string username){
     counter++;
 
     /***************************************************************************************/
-    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 6 ******************** //
+    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 5 ******************** //
 
     if(!receive_message(data, length_rec)){
         cerr << "ERR: some error in receiving MSG2 in upload" << endl;
@@ -963,10 +1007,10 @@ int Client::upload(string username){
 
     MACStr = (unsigned char*)malloc(IV_LENGTH + pkt_end_2.cipher_len);
     memcpy(MACStr,iv, IV_LENGTH);
-    memcpy(MACStr + 16,ciphertext,pkt_end_2.cipher_len);
+    memcpy(MACStr + 16,(void*)pkt_end_2.ciphertext.c_str(),pkt_end_2.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext
-    //generate_SHA256_MAC(MACStr,rcvd_pkt.cipher_len,HMAC,MAC_len,50000);
+    generate_HMAC(MACStr,IV_LENGTH + pkt_end_2.cipher_len, HMAC,MAC_len);
     //Free
     free(MACStr);
 
@@ -983,7 +1027,10 @@ int Client::upload(string username){
     }
 
     //Parsing and pkt parameters setting, it also free 'plaintxt'
-    pkt_end_2.deserialize_plaintext(plaintxt);
+    if(!pkt_end_2.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
+        return -6;
+    }
 
     if(DEBUG){
         cout<<"You received the following cripted message: "<<endl;
@@ -1008,9 +1055,11 @@ int Client::upload(string username){
     return 0;
 }
 
-/**Function that manage the downlaod command, takes as a parameter the name of the file that the user want to download.
- *  @filename : name of the file that the user wants to download 
- *  @username : the username used to log in
+/**
+ * Function that manage the downlaod command, takes as a parameter the name of the file that the user want to download.
+ * 
+ * @param username : username of the user that want to download the file
+ * @return int : 0 => success, !=0 => failure
  */
 int Client::download(string username){
     uint32_t counter = 0;

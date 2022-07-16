@@ -54,7 +54,7 @@ class Client{
     int generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen);
     int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& iv, unsigned char*& ciphertext, int& cipherlen);
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char* iv, unsigned char*& plaintext, int& plainlen);
-    int send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint32_t& counter);
+    int send_encrypted_file (string filename, unsigned char* iv, uint32_t& counter);
     EVP_PKEY* generate_sts_key_param();
 
     //Operational functions
