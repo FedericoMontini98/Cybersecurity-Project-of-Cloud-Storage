@@ -114,7 +114,7 @@ struct login_bootstrap_pkt
 
     // function that deserialize a pkt from the network and set
     // the field of the struct
-    void deserialize_message(uint8_t *serialized_pkt)
+    bool deserialize_message(uint8_t *serialized_pkt)
     {
         int pointer_counter = 0;
 
