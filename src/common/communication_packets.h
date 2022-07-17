@@ -971,6 +971,7 @@ struct bootstrap_download
     uint16_t filename_len;
     string filename;
     uint32_t counter;
+    uint32_t size;
 
     void *serialize_message(int &len)
     {
@@ -1066,6 +1067,13 @@ struct bootstrap_download
             s.erase(0, pos + delimiter.length());
         }
         // Extract the counter
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            counter = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the size
         pos = s.find(delimiter);
         if(pos!=string::npos){
             string i = s.substr(0, pos);

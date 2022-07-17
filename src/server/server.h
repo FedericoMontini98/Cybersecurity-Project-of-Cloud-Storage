@@ -79,7 +79,7 @@ class Worker {
 	int send_login_server_authentication(login_authentication_pkt& pkt);
 	X509* get_certificate();
 	X509* get_CA_certificate();
-    bool encrypted_file_receive(uint32_t size, string filename, uint32_t counter);
+    bool encrypted_file_receive(uint32_t size, string filename, uint32_t& counter);
 	X509_CRL* get_crl();
 
     //Commands
@@ -89,6 +89,7 @@ class Worker {
     //Utility function
     unsigned char* receive_decrypt_and_verify_HMAC();
     bool encrypt_generate_HMAC_and_send(string buffer);
+    bool checkFileExistance(string filename);
 
     void run();
 
