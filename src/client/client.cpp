@@ -140,11 +140,6 @@ int Client::receive_message(unsigned char*& recv_buffer, uint32_t& len){ //EDIT:
 
     }
 
-    if (DEBUG){
-        recv_buffer[len] = '\0'; 
-        printf("received message: %s\n", recv_buffer);
-    }
-
     return 0;
 }
 
@@ -399,7 +394,7 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
 
     try {
          // buffer for the plaintext
-        plaintext = (unsigned char*)malloc(cipherlen+1);
+        plaintext = (unsigned char*)malloc(cipherlen);
 		if (!plaintext) {
 			cerr << "ERR: malloc plaintext failed" << endl;
 			throw 1;
@@ -448,9 +443,6 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
         }
 
         plainlen += outlen;
-
-        // make plaintext printable
-        plaintext[plainlen] = '\0';
 
     }
     catch (int error_code) {
@@ -567,7 +559,7 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
 
 // sent packet [username | sts_key_param | hmac_key_param]
 //MISS CONTROLS AND FREES
-int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
+int Client::send_login_bootstrap(login_bootstrap_pkt& pkt, unsigned char* serialized_pkt){
 	unsigned char* send_buffer;
 	int len;
 	
@@ -604,11 +596,8 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
         cerr << "ERR: failed to send login bootstrap packet" << endl;
         return -1;
     }
-
-    // handle response
-
-    // if all is ok save the 2 parameters on the class field
-
+	
+	serialized_pkt = send_buffer;
     return 0;
     
 }
@@ -650,8 +639,12 @@ bool Client::init_session(){
 	login_bootstrap_pkt bootstrap_pkt;
 	login_authentication_pkt server_auth_pkt; 
 	login_authentication_pkt client_auth_pkt;
+	unsigned char* serialized_pkt;
 	unsigned char* plaintext;
 	int plainlen;
+	unsigned char* signed_text;
+	int signed_text_len;
+	EVP_PKEY* server_pubk;
 	
 	// receive buffer
 	unsigned char* receive_buffer;
@@ -673,7 +666,7 @@ bool Client::init_session(){
 	cout << "Connection with server has been established correctly for socket id: " << session_socket << endl;
 
     // send login bootstrap packet
-    if (send_login_bootstrap(bootstrap_pkt) < 0){
+    if (send_login_bootstrap(bootstrap_pkt, serialized_pkt) < 0){
         cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
         return false;
     }
@@ -681,52 +674,105 @@ bool Client::init_session(){
 	// receive login_server_authentication_pkt
 	while (true){
 	
-		// receive message
-		if (receive_message(receive_buffer, len) < 0){
-			cerr << "ERR: some error in receiving login_server_authentication_pkt" << endl;
+		try{
+			// receive message
+			if (receive_message(receive_buffer, len) < 0){
+				cerr << "ERR: some error in receiving login_server_authentication_pkt" << endl;
+				free(receive_buffer);
+				continue;
+			}
+			
+			// check if it is consistent with server_auth_pkt
+			if (!server_auth_pkt.deserialize_message(receive_buffer)){
+				cerr << "ERR: some error in deserialize server_auth_pkt" << endl;
+				free(receive_buffer);
+				continue;
+			}
+			
+			// derive symmetric key using server_auth_pkt.symmetric_key_param_server_clear
+			
+			// symmetric_key_no_hashed = // IMPLEMENT
+			
+			// hmac_key_no_hashed = // IMPLEMENT
+			
+			// hash the keys
+			/*ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
+			
+			if (ret != 0){
+				return ret;
+			}
+			
+			ret = hash_hmac_key(hmac_key, hmac_key_no_hashed);
+			
+			if (ret != 0){
+				return ret;
+			}*/
+			
+			// decrypt the encrypted part using the derived symmetric key and the received iv
+			free(iv);
+			iv = (unsigned char*) malloc(iv_size);
+			memcpy(iv, server_auth_pkt.iv_cbc, iv_size);
+
+			ret = cbc_decrypt_fragment(server_auth_pkt.encrypted_signing, server_auth_pkt.encrypted_signing_len, plaintext, plainlen);
+			
+			if (ret != 0){
+				cerr << "error in decrypting server authentication packet" << endl;
+				continue;
+				free(receive_buffer);
+			}
+			
+			// get CA certificate and its crl
+			
+			X509* ca_cert = get_CA_certificate();
+			
+			if (ca_cert == nullptr){
+				
+			}
+			
+			X509_CRL* ca_crl = get_crl();
+			
+			if (ca_crl == nullptr){
+				
+			}
+			
+			// validate server's certificate
+			ret = validate_certificate(ca_cert, ca_crl, server_auth_pkt.cert);
+			if (ret != 0){
+				cerr << "error certificate is not valid" << endl;
+				continue;
+				free(receive_buffer);
+			}
+			
+			// extract server public key
+			server_pubk = X509_get_pubkey(server_auth_pkt.cert);
+			
+			if (server_pubk == nullptr){
+				cerr << "failed to extract server public key" << endl;
+				continue;
+				free(receive_buffer);
+			}
+			
+			// cleartext to verify signature: <lengths | server_serialized_params | client_serialized_params>
+			/*serialized_pkt
+			EVP_PKEY* symmetric_key_param_server_clear;
+			EVP_PKEY* hmac_key_param_server_clear;*/
+			
+			// verify the signature
+			verify_signature(server_pubk, plaintext, plainlen, signed_text, signed_text_len);
+			
+			// extract the key from the server certificate
+			
+			// verify the signature
+			
+			// check freshness EVP_PKEY_parameters_eq()
+			
+			// correct packet
 			free(receive_buffer);
-			continue;
+			
+		}catch(int error_code){
+			
 		}
 		
-		// check if it is consistent with server_auth_pkt
-		if (!server_auth_pkt.deserialize_message(receive_buffer)){
-			cerr << "ERR: some error in deserialize server_auth_pkt" << endl;
-			free(receive_buffer);
-			continue;
-		}
-		
-		// derive symmetric key using server_auth_pkt.symmetric_key_param_server_clear
-		
-		// symmetric_key_no_hashed = // IMPLEMENT
-		
-		// hmac_key_no_hashed = // IMPLEMENT
-		
-		// hash the keys
-		/*ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
-		
-		if (ret != 0){
-			return ret;
-		}
-		
-		ret = hash_hmac_key(hmac_key, hmac_key_no_hashed);
-		
-		if (ret != 0){
-			return ret;
-		}*/
-		
-		// decrypt the encrypted part using the derived symmetric key
-		iv = server_auth_pkt.iv_cbc;
-		// allocate
-		cbc_decrypt_fragment(server_auth_pkt.encrypted_signing, server_auth_pkt.encrypted_signing_len, plaintext, plainlen);
-		
-		// extract the key from the server certificate
-		
-		// verify the signature
-		
-		// check freshness EVP_PKEY_parameters_eq()
-		
-		// correct packet
-		free(receive_buffer);
 		break;
 	}
 	
@@ -1129,6 +1175,45 @@ int Client::download(string username){
     //ret = receive_message()
     return 0;
 }
+
+X509* Client::get_CA_certificate (){
+	// Open file which contains CA certificate
+	FILE* file = fopen(filename_ca_certificate.c_str(), "r");
+	if (!file) {
+		cerr << "failed to open CA certificate file" << endl;
+		return nullptr;
+	}
+
+	// Extract the certificate
+	X509* cert = PEM_read_X509(file, nullptr, nullptr, nullptr);
+	fclose(file);
+	if (!cert) {
+		cerr << "failed to read CA certificate file" << endl;
+		return nullptr;
+	}
+
+	return cert;
+}
+
+X509_CRL* Client::get_crl() {
+	// Open the file which contains the CRL
+	FILE* file = fopen(filename_ca_crl.c_str(), "r");
+	if (!file) {
+		cerr << "cannot open CA crl file" << endl;
+		return nullptr;
+	}
+
+	// Extract the CRL
+	X509_CRL* crl = PEM_read_X509_CRL(file, nullptr, nullptr, nullptr);
+	fclose(file);
+	if (!crl) {
+		cerr << "cannot read pem file of CA crl file" << endl;
+		return nullptr;
+	}
+
+	return crl;
+}
+
 
 // RUN
 int Client::run(){

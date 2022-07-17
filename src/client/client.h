@@ -30,10 +30,13 @@ class Client{
     const string server_ip = "127.0.0.1"; 
     sockaddr_in server_addr;
     string username;
+	string filename_ca_certificate = "./Your Organisation CA_cert.pem";
+	string filename_ca_crl = "./Your Organisation CA_crl.pem";
 
     /* must be freed */
     // when a new iv is generated this variable must be freed
     unsigned char* iv = nullptr;
+	int iv_size = EVP_CIPHER_iv_length(EVP_aes_128_cbc());
 
     // keys
     /* must be freed */
@@ -62,6 +65,8 @@ class Client{
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen);
     int send_encrypted_file (string filename, uint32_t& counter);
     EVP_PKEY* generate_sts_key_param();
+	X509* get_CA_certificate();
+	X509_CRL* get_crl();
 
     //Operational functions
     void help();
@@ -73,5 +78,5 @@ class Client{
     uint32_t file_exists_to_download(string filename, string username);
 
     // packets methods
-    int send_login_bootstrap(login_bootstrap_pkt& pkt);
+    int send_login_bootstrap(login_bootstrap_pkt& pkt, unsigned char* serialized_pkt);
 };

@@ -156,7 +156,7 @@ struct login_bootstrap_pkt
         pointer_counter += symmetric_key_param_len;
 		
 		if (symmetric_key_param == nullptr){
-			cerr << "error in deserialization of symmetric key" << endl;
+			cerr << "error in deserialization of symmetric key param" << endl;
 			return false;
 		}
 
@@ -164,7 +164,7 @@ struct login_bootstrap_pkt
         hmac_key_param = deserialize_evp_pkey(serialized_pkt + pointer_counter, hmac_key_param_len);
 		
 		if (hmac_key_param == nullptr){
-			cerr << "error in deserialization of hmac key" << endl;
+			cerr << "error in deserialization of hmac key param" << endl;
 			return false;
 		}
 
@@ -203,14 +203,12 @@ struct login_refuse_connection_pkt
 # define LOGIN_AUTHENTICATION 3
 
 struct login_authentication_pkt {
-	//CONSTANT
-	int iv_cbc_len = EVP_CIPHER_iv_length(EVP_aes_128_cbc());
 	
 	// clear fields
-    uint16_t code;
+    uint16_t code = LOGIN_AUTHENTICATION;
 	uint32_t cert_len = 0;
-	uint32_t symmetric_key_param_server_clear_len; // g^b
-	uint32_t hmac_key_param_server_clear_len; // g^d
+	uint32_t symmetric_key_param_server_clear_len; 
+	uint32_t hmac_key_param_server_clear_len; 
 	uint32_t encrypted_signing_len;
 	uint8_t* iv_cbc = nullptr;
 	X509* cert = nullptr;
@@ -328,8 +326,8 @@ struct login_authentication_pkt {
 		key_buffer_hmac_server_clear = serialize_evp_pkey(hmac_key_param_server_clear, hmac_key_param_server_clear_len);
 		uint32_t certified_hmac_key_server_clear_len = htonl(hmac_key_param_server_clear_len);
 		
-		len = sizeof(certified_code) + sizeof(certified_cert_len) + sizeof(certified_symmetric_key_server_clear_len) + sizeof(certified_symmetric_key_server_clear_len) 
-		+ sizeof(certified_encrypted_signing_len) + iv_cbc_len + cert_len + symmetric_key_param_server_clear_len + hmac_key_param_server_clear_len + encrypted_signing_len;
+		len = sizeof(certified_code) + sizeof(certified_cert_len) + sizeof(certified_symmetric_key_server_clear_len) + sizeof(certified_hmac_key_server_clear_len) 
+		+ sizeof(certified_encrypted_signing_len) + IV_LENGTH + cert_len + symmetric_key_param_server_clear_len + hmac_key_param_server_clear_len + encrypted_signing_len;
 		
 		// buffer allocation for the serialized packet
         serialized_pkt = (uint8_t*) malloc(len);
@@ -357,8 +355,8 @@ struct login_authentication_pkt {
 		pointer_counter += sizeof(encrypted_signing_len);
 
 		// copy fields
-		memcpy(serialized_pkt + pointer_counter, iv_cbc, iv_cbc_len);
-		pointer_counter += iv_cbc_len;
+		memcpy(serialized_pkt + pointer_counter, iv_cbc, IV_LENGTH);
+		pointer_counter += IV_LENGTH;
 		
 		memcpy(serialized_pkt + pointer_counter, cert_buffer, cert_len);
 		pointer_counter += cert_len;
@@ -384,9 +382,12 @@ struct login_authentication_pkt {
         pointer_counter += sizeof(code);
 		
 		// pkt type mismatch
-		if (code != LOGIN_BOOTSTRAP){
+		if (code != LOGIN_AUTHENTICATION){
+			cerr << "invalid code in login bootstrap" << endl;
 			return false;
 		}
+		// code, cert_len, dh_symm_key_len, dh_hmac_key_len, encrypted_signing_len, iv_cbc, cert_len, 
+		// dh_symm_key, dh_hmac_key, encrypted_signing
 		
 		// copy cert_len
 		memcpy (&cert_len, serialized_pkt + pointer_counter, sizeof(cert_len));
@@ -408,8 +409,8 @@ struct login_authentication_pkt {
         pointer_counter += sizeof(encrypted_signing_len);
 		
 		// copy of iv_cbc
-		memcpy (iv_cbc, serialized_pkt + pointer_counter, iv_cbc_len);
-        pointer_counter += iv_cbc_len;
+		iv_cbc = serialized_pkt + pointer_counter;
+        pointer_counter += IV_LENGTH;
 		
 		// copy of certificate
 		cert = deserialize_certificate_X509 (serialized_pkt + pointer_counter, cert_len);
@@ -421,12 +422,25 @@ struct login_authentication_pkt {
 		symmetric_key_param_server_clear = deserialize_evp_pkey(serialized_pkt + pointer_counter, symmetric_key_param_server_clear_len);
 		pointer_counter += symmetric_key_param_server_clear_len;
 		
+		if (symmetric_key_param_server_clear == nullptr){
+			cerr << "error in deserialization of symmetric key param" << endl;
+			return false;
+		}
+		
 		// hmac
 		hmac_key_param_server_clear = deserialize_evp_pkey(serialized_pkt + pointer_counter, hmac_key_param_server_clear_len);
 		pointer_counter += hmac_key_param_server_clear_len;
 		
+		if (hmac_key_param_server_clear == nullptr){
+			cerr << "error in deserialization of hmac key param" << endl;
+			return false;
+		}
+		
 		// point to encrypted part
-		encrypted_signing =  serialized_pkt + pointer_counter;
+		encrypted_signing = (uint8_t*) malloc(encrypted_signing_len);
+		memcpy(encrypted_signing, serialized_pkt + pointer_counter, encrypted_signing_len);
+		
+		return true;
 		
 		/*
         BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
