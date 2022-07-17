@@ -669,7 +669,7 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
 
 // sent packet [username | sts_key_param | hmac_key_param]
 //MISS CONTROLS AND FREES
-int Client::send_login_bootstrap(login_bootstrap_pkt& pkt, unsigned char* serialized_pkt){
+int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
 	unsigned char* send_buffer;
 	int len;
 	
@@ -707,9 +707,67 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt, unsigned char* serial
         return -1;
     }
 	
-	serialized_pkt = send_buffer;
     return 0;
     
+}
+
+// send the client authentication packet
+int Client::send_login_client_authentication(login_authentication_pkt& pkt){
+	unsigned char* part_to_encrypt;
+	int pte_len;
+	int final_pkt_len;
+	unsigned int signature_len;
+	unsigned char* signature;
+	unsigned char* ciphertext;
+	unsigned char* final_pkt;
+	int cipherlen;
+	int ret;
+	
+	//set the clear fields that must be null as ""
+	
+	// load client certificate
+	pkt.cert = get_certificate();
+	
+	if (pkt.cert == nullptr){
+		cerr << "cannot load certificate" << endl;
+		return -1;
+	}
+	
+	// serialize the part to encrypt
+	part_to_encrypt = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
+	
+	if (part_to_encrypt == nullptr){
+		cerr << "error in serialize part to encrypt" << endl;
+		return -1;
+	}
+	
+	// sign it
+	signature = sign_message(private_key, part_to_encrypt, pte_len, signature_len);
+	if (signature == nullptr){
+		cerr << "cannot generate valid signature" << endl;
+		return -1;
+	}
+
+	// encrypt, also set the iv field
+	ret = cbc_encrypt_fragment(signature, signature_len, ciphertext, cipherlen, true);
+	if (ret != 0){
+		cerr << "cannot generate valid ciphertext" << endl;
+		return -1;
+	}
+	
+	pkt.iv_cbc = iv;
+	pkt.encrypted_signing = ciphertext;
+	pkt.encrypted_signing_len = cipherlen;
+	
+	// final serialization, this time there will be no dh keys in clear
+	final_pkt = (unsigned char*) pkt.serialize_message(final_pkt_len);
+	
+	if (!send_message(final_pkt, final_pkt_len)){
+		cerr << "message cannot be sent" << endl;
+		return -1;
+	}
+	
+	return 0;
 }
 
 // generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
@@ -749,16 +807,20 @@ bool Client::init_session(){
 	login_bootstrap_pkt bootstrap_pkt;
 	login_authentication_pkt server_auth_pkt; 
 	login_authentication_pkt client_auth_pkt;
-	unsigned char* serialized_pkt;
 	unsigned char* plaintext;
 	int plainlen;
 	unsigned char* signed_text;
 	int signed_text_len;
 	EVP_PKEY* server_pubk;
+	int pointer_counter = 0;
 	
 	// receive buffer
 	unsigned char* receive_buffer;
     uint32_t len;
+	
+	memset(&bootstrap_pkt, 0, sizeof(bootstrap_pkt));
+	memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
+	memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
     
     // initialize socket
     if (!init_socket()){
@@ -776,7 +838,7 @@ bool Client::init_session(){
 	cout << "Connection with server has been established correctly for socket id: " << session_socket << endl;
 
     // send login bootstrap packet
-    if (send_login_bootstrap(bootstrap_pkt, serialized_pkt) < 0){
+    if (send_login_bootstrap(bootstrap_pkt) < 0){
         cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
         return false;
     }
@@ -836,13 +898,13 @@ bool Client::init_session(){
 			X509* ca_cert = get_CA_certificate();
 			
 			if (ca_cert == nullptr){
-				
+				cout << "nono" << endl;
 			}
 			
 			X509_CRL* ca_crl = get_crl();
 			
 			if (ca_crl == nullptr){
-				
+				cout << "nono" << endl;
 			}
 			
 			// validate server's certificate
@@ -862,19 +924,40 @@ bool Client::init_session(){
 				free(receive_buffer);
 			}
 			
-			// cleartext to verify signature: <lengths | server_serialized_params | client_serialized_params>
-			/*serialized_pkt
-			EVP_PKEY* symmetric_key_param_server_clear;
-			EVP_PKEY* hmac_key_param_server_clear;*/
+			// cleartext to verify signature: <lengths|server_serialized_params|client_serialized_params>
+			// the signature is on the serialized version of the dh keys
+
+			// re-serialize the dh keys and verify the signature
+			server_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear;
+			server_auth_pkt.symmetric_key_param_len_server = server_auth_pkt.symmetric_key_param_server_clear_len;
 			
-			// verify the signature
-			verify_signature(server_pubk, plaintext, plainlen, signed_text, signed_text_len);
+			server_auth_pkt.hmac_key_param_server = server_auth_pkt.hmac_key_param_server_clear;
+			server_auth_pkt.hmac_key_param_len_server = server_auth_pkt.hmac_key_param_server_clear_len;
 			
-			// extract the key from the server certificate
+			server_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
+			server_auth_pkt.symmetric_key_param_len_client = bootstrap_pkt.symmetric_key_param_len;
 			
-			// verify the signature
+			server_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
+			server_auth_pkt.hmac_key_param_len_client = bootstrap_pkt.hmac_key_param_len;
 			
-			// check freshness EVP_PKEY_parameters_eq()
+			// this will serialize as the server did
+			signed_text = (unsigned char*) server_auth_pkt.serialize_part_to_encrypt(signed_text_len);
+			
+			// verify the signature (freshness verification)
+			ret = verify_signature(server_pubk, plaintext, plainlen, signed_text, signed_text_len);
+			
+			if (ret != 0){
+				cerr << "error in signature verification" << endl;
+			}
+			
+			// all is verified time to send client authentication packet (Note: the user behave as server this time)
+			client_auth_pkt.symmetric_key_param_server = bootstrap_pkt.symmetric_key_param;
+			client_auth_pkt.symmetric_key_param_len_server = bootstrap_pkt.symmetric_key_param_len;
+			
+			client_auth_pkt.hmac_key_param_server = bootstrap_pkt.hmac_key_param;
+			client_auth_pkt.hmac_key_param_len_server = bootstrap_pkt.hmac_key_param_len;
+			
+			send_login_client_authentication(client_auth_pkt);
 			
 			// correct packet
 			free(receive_buffer);
@@ -1173,6 +1256,38 @@ int Client::download(string username){
     return 0;
 }
 
+// retrieve user certificate
+X509* Client::get_certificate() {
+	
+	FILE* file = nullptr;
+	X509* cert = nullptr;
+	string dir = "./users/" + username + "/" + username + ".cer";
+
+	try {
+		file = fopen(dir.c_str(), "r");
+		if (!file) {
+			cerr << "cannot find user certificate" << endl;
+			throw 0;
+		}
+
+		cert = PEM_read_X509(file, nullptr, nullptr, nullptr);
+		if (!cert) {
+			cerr << "cannot read user certificate correctly" << endl;
+			throw 1;
+		}
+
+	} catch (int e) {
+		if (e >= 1) {
+			fclose(file);
+		}
+		return nullptr;
+	}
+
+	fclose(file);
+	return cert;
+}
+
+// get ca certificate
 X509* Client::get_CA_certificate (){
 	// Open file which contains CA certificate
 	FILE* file = fopen(filename_ca_certificate.c_str(), "r");
@@ -1192,6 +1307,7 @@ X509* Client::get_CA_certificate (){
 	return cert;
 }
 
+// get ca crl
 X509_CRL* Client::get_crl() {
 	// Open the file which contains the CRL
 	FILE* file = fopen(filename_ca_crl.c_str(), "r");
@@ -1210,6 +1326,7 @@ X509_CRL* Client::get_crl() {
 
 	return crl;
 }
+
 
 
 // RUN
