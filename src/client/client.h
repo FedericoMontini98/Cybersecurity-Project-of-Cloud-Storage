@@ -22,6 +22,7 @@
 # define FILE_PATH "./users/"
 # define FILE_MAX_SIZE 4294967296
 # define IV_LENGTH 16
+# define HMAC_KEY_SIZE 32
 
 // MAYBE ADD SEND AND RECV BUFFER
 class Client{

@@ -452,7 +452,6 @@ bool Worker::init_session(){
 	unsigned char* signed_text;
 	int signed_text_len;
 	EVP_PKEY* client_pubk;
-	int pointer_counter = 0;
 	X509* ca_cert;
 	X509_CRL* ca_crl;
 	
@@ -478,14 +477,15 @@ bool Worker::init_session(){
 		if (!bootstrap_pkt.deserialize_message(receive_buffer)){
 			cerr << "ERR: some error in deserialize login_bootstrap_pkt" << endl;
 			free(receive_buffer);
+			bootstrap_pkt.free_pointers();
 			continue;
 		}
 		
-		// check username (WE NEED A READ THAT IS THREAD SAFE)
+		// check username 
 		if (!check_username(bootstrap_pkt.username)){
 			cerr << "ERR: username "+bootstrap_pkt.username+ " is not registered" << endl;
 			free(receive_buffer);
-			continue;
+			return false;
 		}
 		
 		// check if key params are valid
@@ -547,7 +547,6 @@ bool Worker::init_session(){
 		cerr << "failed to hash hmac key" << endl;
 		return false;
 	}
-	
 	
 	// encrypt and send login_server_authentication_pkt (also generate iv)
 	if (send_login_server_authentication(server_auth_pkt) != 0){
@@ -644,28 +643,35 @@ bool Worker::init_session(){
 				cerr << "error in signature verification" << endl;
 			}
 			
-			cout << "ok" << endl;
 			free(receive_buffer);
 			
 		}catch (int error_code){
 			
-			// free all the structures
-			free(receive_buffer);
-			free(iv);
-			X509_free(ca_cert);
-			X509_CRL_free(ca_crl);
-			server_auth_pkt.free_buffers();
-			client_auth_pkt.free_buffers();
+			if (error_code > 1) {free(receive_buffer);}
+			if (error_code > 7) {free(iv); iv = nullptr;}
+			if (error_code > 9) {X509_free(ca_cert);}
+			if (error_code > 10) {X509_CRL_free(ca_crl);}
+			
+			// reset structures
+			memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
+			memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
 		}
 		
 		break;
 		
 	}
 	
-	// send a feedback
-	
-	// all is ok
+	// user correctly authenticated
 	logged_user = bootstrap_pkt.username;
+	
+	//free all 
+	X509_free(ca_cert);
+	X509_CRL_free(ca_crl);
+	bootstrap_pkt.free_pointers();
+	server_auth_pkt.free_pointers();
+	client_auth_pkt.free_pointers();
+	
+	return true;
 }
 
 // read server certificate, returns null on failure

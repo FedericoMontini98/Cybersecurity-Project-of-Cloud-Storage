@@ -624,6 +624,10 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 		return -1;
 	}
 	
+	free(ciphertext);
+	free(iv);
+	iv = nullptr;
+	
 	return 0;
 }
 
@@ -671,7 +675,6 @@ bool Client::init_session(){
 	unsigned char* signed_text;
 	int signed_text_len;
 	EVP_PKEY* server_pubk;
-	int pointer_counter = 0;
 	X509* ca_cert;
 	X509_CRL* ca_crl;
 	
@@ -700,7 +703,7 @@ bool Client::init_session(){
 
     // send login bootstrap packet
     if (send_login_bootstrap(bootstrap_pkt) != 0){
-		bootstrap_pkt.free();
+		bootstrap_pkt.free_pointers();
         cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
         return false;
     }
@@ -726,12 +729,14 @@ bool Client::init_session(){
 			
 			if (!symmetric_key_no_hashed){
 				cerr << "failed to derive symmetric key" << endl;
+				throw 3;
 				return false;
 			}
 			ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
 			
 			if (ret != 0){
 				cerr << "failed to hash symmetric key" << endl;
+				throw 4;
 				return false;
 			}
 			
@@ -739,14 +744,20 @@ bool Client::init_session(){
 			
 			if (!hmac_key_no_hashed){
 				cerr << "failed to derive hmac key" << endl;
+				throw 5;
 				return false;
 			}
 			ret = hash_hmac_key(hmac_key, hmac_key_no_hashed);
 			
 			if (ret != 0){
 				cerr << "failed to hash hmac key" << endl;
+				throw 6;
 				return false;
 			}
+			
+			// clean no hashed keys
+			secure_free(symmetric_key_no_hashed, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+			secure_free(hmac_key_no_hashed, HMAC_KEY_SIZE);
 			
 			// decrypt the encrypted part using the derived symmetric key and the received iv
 			free(iv);
@@ -754,7 +765,7 @@ bool Client::init_session(){
 			
 			if(!iv){
 				cerr << "failed malloc for iv in init_session" << endl;
-				throw 3;
+				throw 7;
 			}
 			
 			memcpy(iv, server_auth_pkt.iv_cbc, iv_size);
@@ -763,7 +774,7 @@ bool Client::init_session(){
 			
 			if (ret != 0){
 				cerr << "error in decrypting server authentication packet" << endl;
-				throw 4;
+				throw 8;
 			}
 			
 			// get CA certificate and its crl
@@ -771,19 +782,19 @@ bool Client::init_session(){
 			ca_cert = get_CA_certificate();
 			
 			if (ca_cert == nullptr){
-				throw 5;
+				throw 9;
 			}
 			
 			ca_crl = get_crl();
 			
 			if (ca_crl == nullptr){
-				throw 6;
+				throw 10;
 			}
 			
 			// validate server's certificate
 			ret = validate_certificate(ca_cert, ca_crl, server_auth_pkt.cert);
 			if (ret != 0){
-				throw 7;
+				throw 11;
 			}
 			
 			// extract server public key
@@ -791,7 +802,7 @@ bool Client::init_session(){
 			
 			if (server_pubk == nullptr){
 				cerr << "failed to extract server public key" << endl;
-				throw 8;
+				throw 12;
 			}
 			
 			// cleartext to verify signature: <lengths|server_serialized_params|client_serialized_params>
@@ -808,13 +819,22 @@ bool Client::init_session(){
 			
 			// SET THE FIELDS THAT WE HAVE GENERATED BEFORE
 			server_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
+			EVP_PKEY_up_ref(bootstrap_pkt.symmetric_key_param);
 			server_auth_pkt.symmetric_key_param_len_client = bootstrap_pkt.symmetric_key_param_len;
 			
 			server_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
+			EVP_PKEY_up_ref(bootstrap_pkt.hmac_key_param);
 			server_auth_pkt.hmac_key_param_len_client = bootstrap_pkt.hmac_key_param_len;
 			
 			// this will serialize as the server did
-			signed_text = (unsigned char*) server_auth_pkt.serialize_part_to_encrypt(signed_text_len);
+			unsigned char* to_copy = (unsigned char*) server_auth_pkt.serialize_part_to_encrypt(signed_text_len);
+			signed_text = (unsigned char*) malloc(signed_text_len);
+			
+			if(!signed_text){
+				cerr << "error in signed_text malloc" << endl;
+				throw 13;
+			}
+			memcpy(signed_text, to_copy, signed_text_len);
 			
 			// verify the signature (freshness verification)
 			ret = verify_signature(server_pubk, plaintext, plainlen, signed_text, signed_text_len);
@@ -823,17 +843,25 @@ bool Client::init_session(){
 				cerr << "error in signature verification" << endl;
 			}
 			
+			// frees
+			free(signed_text);
 			free(receive_buffer);
+			X509_free(ca_cert);
+			X509_CRL_free(ca_crl);
+			EVP_PKEY_free(server_pubk);
 			
 		}catch (int error_code){
 			
-			// free all the structures
-			free(receive_buffer);
-			free(iv);
-			X509_free(ca_cert);
-			X509_CRL_free(ca_crl);
-			server_auth_pkt.free_buffers();
-			client_auth_pkt.free_buffers();
+			if (error_code > 1)  { free(receive_buffer); }
+			if (error_code > 7)  { free(iv); iv = nullptr; }
+			if (error_code > 9)  { X509_free(ca_cert); }
+			if (error_code > 10) { X509_CRL_free(ca_crl); }
+			if (error_code > 12) { EVP_PKEY_free(server_pubk); }
+			if (error_code > 13) { free(signed_text); }
+			
+			// reset structures
+			memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
+			memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
 		}
 		
 		break;
@@ -841,24 +869,32 @@ bool Client::init_session(){
 	
 	// all is verified, time to send client authentication packet 
 	client_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear;
+	EVP_PKEY_up_ref(server_auth_pkt.symmetric_key_param_server_clear);
 	client_auth_pkt.symmetric_key_param_len_server = server_auth_pkt.symmetric_key_param_server_clear_len;
+	
 	client_auth_pkt.hmac_key_param_server = server_auth_pkt.hmac_key_param_server_clear;
+	EVP_PKEY_up_ref(server_auth_pkt.hmac_key_param_server_clear);
 	client_auth_pkt.hmac_key_param_len_server = server_auth_pkt.hmac_key_param_server_clear_len;
 	
 	client_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
+	EVP_PKEY_up_ref(bootstrap_pkt.symmetric_key_param);
 	client_auth_pkt.symmetric_key_param_len_client = bootstrap_pkt.symmetric_key_param_len;
+	
 	client_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
+	EVP_PKEY_up_ref(bootstrap_pkt.hmac_key_param);
 	client_auth_pkt.hmac_key_param_len_client = bootstrap_pkt.hmac_key_param_len;
 	
 	if (send_login_client_authentication(client_auth_pkt) != 0){
 		return false;
 	}
 	
-	// free dh parameters
-	EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
-	EVP_PKEY_free(bootstrap_pkt.hmac_key_param);
+	// free all
+	bootstrap_pkt.free_pointers();
+	server_auth_pkt.free_pointers();
+	client_auth_pkt.free_pointers();
 	
-	//receive feedback
+	// client consider the authentication as done, if server close the connection it means
+	// that an error occurs on signature verification
 
     return true;
 }

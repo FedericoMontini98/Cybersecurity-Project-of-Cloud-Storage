@@ -12,13 +12,6 @@ using namespace std;
 // PACKET CODES
 #define BOOTSTRAP_LOGIN 1
 
-/*
-    Legenda tipi
-    uint8_t = char/
-    uint16_t = short/ unsigend short -- htons
-    uint32_t = int/ unsigned int     -- htonl
-*/
-
 /*********************************************************************************************************************************/
 
 // SENT IN CLEAR
@@ -31,18 +24,21 @@ struct login_bootstrap_pkt
     string username;
     uint32_t symmetric_key_param_len;
     uint32_t hmac_key_param_len;
-    EVP_PKEY *symmetric_key_param;
-    EVP_PKEY *hmac_key_param;
+    EVP_PKEY *symmetric_key_param = nullptr;
+    EVP_PKEY *hmac_key_param = nullptr;
+	
+	// buffers
+	
 	
     // function that return a void* serialized_pkt that contains the serialized packet
     // ready to be sent on the network
     void *serialize_message(int &len)
     {
         uint8_t *serialized_pkt = nullptr;    // pointer to the serialized packet buffer to be returned
-        void *key_buffer_symmetric = nullptr; // pointer to the buffer with the serialized key for the sts parameter
-        void *key_buffer_hmac = nullptr;      // pointer to the buffer with the serialized key for the hmac parameter
-        int pointer_counter = 0;              // pointer for copy the field of the bootstrap packet into the buffer for the
-                                              // serialized packet pointed by serialized_pkt
+        int pointer_counter = 0;              // pointer_counter to fields
+											  
+		void *key_buffer_symmetric = nullptr; // pointer to the buffer with the serialized key for the sts parameter
+		void *key_buffer_hmac = nullptr; // pointer to the buffer with the serialized key for the hmac parameter
 
         // get of the pointer to the serialized sts parameter buffer
         key_buffer_symmetric = serialize_evp_pkey(symmetric_key_param, symmetric_key_param_len);
@@ -108,6 +104,9 @@ struct login_bootstrap_pkt
 
         // copy of the hmac_key_param buffer
         memcpy(serialized_pkt + pointer_counter, key_buffer_hmac, hmac_key_param_len);
+		
+		secure_free(key_buffer_symmetric, symmetric_key_param_len);
+		secure_free(key_buffer_hmac, hmac_key_param_len);
 
         return serialized_pkt;
     }
@@ -122,8 +121,6 @@ struct login_bootstrap_pkt
         memcpy(&code, serialized_pkt, sizeof(code));
         code = ntohs(code);
         pointer_counter += sizeof(code);
-		
-		cout << code << endl;
 		
 		// pkt type mismatch
 		if (code != LOGIN_BOOTSTRAP){
@@ -166,18 +163,12 @@ struct login_bootstrap_pkt
 			cerr << "error in deserialization of hmac key param" << endl;
 			return false;
 		}
-
-        /*
-        BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
-        EVP_PKEY_print_public(bp, symmetric_key_param, 1, NULL);
-        BIO_free(bp);
-        */
 		
 		return true;
     }
 	
 	// free keys
-	void free(){
+	void free_pointers(){
 		EVP_PKEY_free(symmetric_key_param);
 		EVP_PKEY_free(hmac_key_param);
 	}
@@ -216,45 +207,39 @@ struct login_authentication_pkt {
 	uint32_t encrypted_signing_len = 0;
 	uint8_t* iv_cbc = nullptr;
 	X509* cert = nullptr;
-	EVP_PKEY* symmetric_key_param_server_clear;
-	EVP_PKEY* hmac_key_param_server_clear;
+	EVP_PKEY* symmetric_key_param_server_clear = nullptr;
+	EVP_PKEY* hmac_key_param_server_clear = nullptr;
 	
 	// encrypted string
 	uint8_t* encrypted_signing = nullptr;
 	
-	// Encrypted/Decrypted part
+	// encrypted signed part to be serialized
 	uint32_t symmetric_key_param_len_server = 0;
     uint32_t hmac_key_param_len_server = 0;
 	uint32_t symmetric_key_param_len_client = 0;
     uint32_t hmac_key_param_len_client = 0;
 	
-	EVP_PKEY* symmetric_key_param_server;
-	EVP_PKEY* hmac_key_param_server;
-	EVP_PKEY* symmetric_key_param_client;
-	EVP_PKEY* hmac_key_param_client;
+	EVP_PKEY* symmetric_key_param_server = nullptr;
+	EVP_PKEY* hmac_key_param_server = nullptr;
+	EVP_PKEY* symmetric_key_param_client = nullptr;
+	EVP_PKEY* hmac_key_param_client = nullptr;
 	
 	// buffers
 	uint8_t* serialized_pte = nullptr;
 	size_t serialized_pte_len = 0;
-	void* key_buffer_symmetric_server = nullptr;     
-	void* key_buffer_hmac_server = nullptr;    
-	void* key_buffer_symmetric_client = nullptr;    
-	void* key_buffer_hmac_client = nullptr; 
 	uint8_t* serialized_pkt = nullptr;  
 	size_t serialized_pkt_len = 0;
-	void* cert_buffer = nullptr; 
-	void* key_buffer_symmetric_server_clear = nullptr;
-	void* key_buffer_hmac_server_clear = nullptr; 
+	
 	
 	// serialize the part to be signed and then encrypted, this function must be called before serialize_message
 	void* serialize_part_to_encrypt(int &len){
         int pointer_counter = 0; 
 		
 		// evp serializations
-		key_buffer_symmetric_server = serialize_evp_pkey(symmetric_key_param_server, symmetric_key_param_len_server);
-		key_buffer_hmac_server = serialize_evp_pkey(hmac_key_param_server, hmac_key_param_len_server);
-		key_buffer_symmetric_client = serialize_evp_pkey(symmetric_key_param_client, symmetric_key_param_len_client);
-		key_buffer_hmac_client = serialize_evp_pkey(hmac_key_param_client, hmac_key_param_len_client);
+		void* key_buffer_symmetric_server = serialize_evp_pkey(symmetric_key_param_server, symmetric_key_param_len_server);
+		void* key_buffer_hmac_server = serialize_evp_pkey(hmac_key_param_server, hmac_key_param_len_server);
+		void* key_buffer_symmetric_client = serialize_evp_pkey(symmetric_key_param_client, symmetric_key_param_len_client);
+		void* key_buffer_hmac_client = serialize_evp_pkey(hmac_key_param_client, hmac_key_param_len_client);
 		
 		// total len of the encrypted part
         len = sizeof(symmetric_key_param_len_server) + sizeof(hmac_key_param_len_server) + sizeof(symmetric_key_param_len_client) + 
@@ -303,13 +288,21 @@ struct login_authentication_pkt {
 		memcpy(serialized_pte + pointer_counter, key_buffer_hmac_client, hmac_key_param_len_client);
         pointer_counter += hmac_key_param_len_client;
 		
+		// free buffers
+		secure_free(key_buffer_symmetric_server, symmetric_key_param_len_server);
+		secure_free(key_buffer_hmac_server, hmac_key_param_len_server);
+		secure_free(key_buffer_symmetric_client, symmetric_key_param_len_client);
+		secure_free(key_buffer_hmac_client, hmac_key_param_len_client);
+		
 		return serialized_pte;
     }
 
 	// serialize the message with the encrypted part
-	// clear keys option is to serialize in clear the dh keys
 	void* serialize_message(int& len){
 		int pointer_counter = 0;
+		void* cert_buffer = nullptr; 
+		void* key_buffer_symmetric_server_clear = nullptr;
+		void* key_buffer_hmac_server_clear = nullptr; 
 		
 		if(encrypted_signing == nullptr || encrypted_signing_len == 0 || iv_cbc == nullptr || cert == nullptr){
 			
@@ -374,6 +367,10 @@ struct login_authentication_pkt {
 		pointer_counter += hmac_key_param_server_clear_len;
 		
 		memcpy(serialized_pkt + pointer_counter, encrypted_signing, encrypted_signing_len);
+
+		secure_free(cert_buffer, cert_len);
+		secure_free(key_buffer_symmetric_server_clear, symmetric_key_param_server_clear_len);
+		secure_free(key_buffer_hmac_server_clear, hmac_key_param_server_clear_len);
 		
 		return serialized_pkt;
 	}
@@ -381,6 +378,7 @@ struct login_authentication_pkt {
 	// serialize the message with no dh keys in clear
 	void* serialize_message_no_clear_keys(int& len){
 		int pointer_counter = 0;
+		void* cert_buffer;
 		
 		if(encrypted_signing == nullptr || encrypted_signing_len == 0 || iv_cbc == nullptr || cert == nullptr){
 			
@@ -422,6 +420,8 @@ struct login_authentication_pkt {
 		pointer_counter += cert_len;
 		
 		memcpy(serialized_pkt + pointer_counter, encrypted_signing, encrypted_signing_len);
+		
+		secure_free(cert_buffer, cert_len);
 		
 		return serialized_pkt;
 	}
@@ -485,12 +485,6 @@ struct login_authentication_pkt {
 		memcpy(encrypted_signing, serialized_pkt + pointer_counter, encrypted_signing_len);
 		
 		return true;
-		
-		/*
-        BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
-        EVP_X509_print_public(bp, cert, 1, NULL);
-        BIO_free(bp);
-        */
     }
 	
 	// deserialize the message with the encrypted part not considering dh keys in clear
@@ -522,88 +516,30 @@ struct login_authentication_pkt {
 		memcpy(encrypted_signing, serialized_pkt + pointer_counter, encrypted_signing_len);
 		
 		return true;
-		
-		/*
-        BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
-        EVP_X509_print_public(bp, cert, 1, NULL);
-        BIO_free(bp);
-        */
     }
 	
-	
-	
-	// deserialize the decripted part SBAGLIATA
-	bool deserialize_encrypted_part(uint8_t* plaintext){
-		int pointer_counter = 0;
-		
-		// length copies
-        memcpy(&symmetric_key_param_len_server, plaintext, sizeof(symmetric_key_param_len_server));
-		symmetric_key_param_len_server = ntohl(symmetric_key_param_len_server);
-        pointer_counter += sizeof(symmetric_key_param_len_server);
-		
-		memcpy(&hmac_key_param_len_server, plaintext + pointer_counter, sizeof(hmac_key_param_len_server));
-		hmac_key_param_len_server = ntohl(hmac_key_param_len_server);
-        pointer_counter += sizeof(hmac_key_param_len_server);
-		
-		memcpy(&symmetric_key_param_len_client, plaintext + pointer_counter, sizeof(symmetric_key_param_len_client));
-		symmetric_key_param_len_client = ntohl(symmetric_key_param_len_client);
-        pointer_counter += sizeof(symmetric_key_param_len_client);
-		
-		memcpy(&hmac_key_param_len_client, plaintext + pointer_counter, sizeof(hmac_key_param_len_client));
-		hmac_key_param_len_client = ntohl(hmac_key_param_len_client);
-        pointer_counter += sizeof(hmac_key_param_len_client);
-
-		// key deserialization
-		symmetric_key_param_server = deserialize_evp_pkey(plaintext + pointer_counter, symmetric_key_param_len_server);
-		pointer_counter += symmetric_key_param_len_server;
-		
-		hmac_key_param_server = deserialize_evp_pkey(plaintext + pointer_counter, hmac_key_param_len_server);
-		pointer_counter += hmac_key_param_len_server;
-		
-		symmetric_key_param_client = deserialize_evp_pkey(plaintext + pointer_counter, symmetric_key_param_len_client);
-		pointer_counter += symmetric_key_param_len_client;
-		
-		hmac_key_param_client = deserialize_evp_pkey(plaintext + pointer_counter, hmac_key_param_len_client);
-		pointer_counter += hmac_key_param_len_client;
-		
-		if (symmetric_key_param_server == nullptr || hmac_key_param_server == nullptr || symmetric_key_param_client == nullptr || hmac_key_param_client == nullptr){
-			
-			return false;
-		}
-		
-		/*
-        BIO *bp = BIO_new_fp(stdout, BIO_NOCLOSE);
-        EVP_PKEY_print_public(bp, symmetric_key_param_server, 1, NULL);
-        BIO_free(bp);
-        */
-		
-		return true;
-
-	}	
-	
-	void free_buffers(){
+	void free_pointers(){
 		
 		// fields
-		free(iv_cbc);
-		X509_free(cert);
-		EVP_PKEY_free(symmetric_key_param_server_clear);
-		EVP_PKEY_free(hmac_key_param_server_clear);
-		free(encrypted_signing);
-		EVP_PKEY_free(symmetric_key_param_server);
-		EVP_PKEY_free(hmac_key_param_server);
-		EVP_PKEY_free(symmetric_key_param_client);
-		EVP_PKEY_free(hmac_key_param_client);
+		if ( cert != nullptr) { X509_free(cert); }
+		if (symmetric_key_param_server_clear!= nullptr){ EVP_PKEY_free(symmetric_key_param_server_clear);}
+		if (hmac_key_param_server_clear != nullptr)    { EVP_PKEY_free(hmac_key_param_server_clear); 	 }
+		if (symmetric_key_param_server != nullptr)	   { EVP_PKEY_free(symmetric_key_param_server); 	 }
+		if (hmac_key_param_server != nullptr)		   { EVP_PKEY_free(hmac_key_param_server); 			 }
+		if (symmetric_key_param_client != nullptr)	   { EVP_PKEY_free(symmetric_key_param_client); 	 }
+		if (hmac_key_param_client != nullptr)	       { EVP_PKEY_free(hmac_key_param_client);			 }
 		
 		// buffers
-		secure_free(serialized_pte, serialized_pte_len);
-		secure_free(key_buffer_symmetric_server, symmetric_key_param_len_server);
-		secure_free(key_buffer_hmac_server, hmac_key_param_len_server);
-		secure_free(key_buffer_symmetric_client, symmetric_key_param_len_client);
-		secure_free(key_buffer_hmac_client, hmac_key_param_len_client);
-		secure_free(key_buffer_symmetric_server_clear, symmetric_key_param_server_clear_len);
-		secure_free(key_buffer_hmac_server_clear, hmac_key_param_server_clear_len);
-		secure_free(serialized_pkt, serialized_pkt_len);
-		free(cert_buffer);
+		cout << "ehi" << endl;
+		if (serialized_pte != nullptr) {
+			secure_free(serialized_pte, serialized_pte_len);
+		}
+		
+		cout << "ehi" << endl;
+		
+		if (serialized_pkt != nullptr){
+			secure_free(serialized_pkt, serialized_pkt_len);
+		}
 		
 	}
 };
