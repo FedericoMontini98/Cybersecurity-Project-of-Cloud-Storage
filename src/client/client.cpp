@@ -482,7 +482,7 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
     }
 
     //Calculate the number of chunks to send
-    size_t num_chunk_to_send = ceil((float)buf.st_size/4096);
+    size_t num_chunk_to_send = ceil((float)buf.st_size/FILE_FRAGMENTS_SIZE);
     if(DEBUG){
         cout << "Number of chunks: " << num_chunk_to_send << endl << endl;
     }
@@ -564,7 +564,7 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt, unsigned char* serial
 	int len;
 	
     // initialize to 0 the pack
-    memset(&pkt, 0, sizeof(pkt));
+    //memset(&pkt, 0, sizeof(pkt));
 	
 	// lens will be automatically set after sending
     pkt.code = LOGIN_BOOTSTRAP;
@@ -881,7 +881,6 @@ int Client::upload(string username){
     pkt.counter = counter;
     pkt.size = size_file;
 
-    unsigned char* iv = (unsigned char*)malloc(IV_LENGTH);
     unsigned char* ciphertext;
     int cipherlen;
 
@@ -898,7 +897,7 @@ int Client::upload(string username){
     uint32_t MAC_len; 
     unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
     unsigned char* HMAC;
-    memcpy(MACStr,iv, IV_LENGTH);
+    memcpy(MACStr,this->iv, IV_LENGTH);
     memcpy(MACStr + 16,ciphertext,cipherlen);
 
 
@@ -924,6 +923,8 @@ int Client::upload(string username){
     }
     free(MACStr);
     free(ciphertext);
+    free(pkt.iv);
+    free(pkt.HMAC);
     counter++;
     
     /***************************************************************************************/
@@ -943,10 +944,8 @@ int Client::upload(string username){
         return -2;
     }
 
-    this->iv = iv;
-
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
-    memcpy(MACStr,iv, IV_LENGTH);
+    memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
     memcpy(MACStr + 16,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext
@@ -962,6 +961,7 @@ int Client::upload(string username){
 
     unsigned char* plaintxt;
     int ptlen;
+    this->iv = rcvd_pkt.iv;
 
     //Decrypt the ciphertext and obtain the plaintext
     if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
@@ -970,7 +970,7 @@ int Client::upload(string username){
     }
 
     //Parsing and pkt parameters setting, it also free 'plaintxt'
-        if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
+    if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
         cerr<<"Received wrong message type!"<<endl;
         return -2;
     }
@@ -1060,7 +1060,7 @@ int Client::upload(string username){
     }
 
     MACStr = (unsigned char*)malloc(IV_LENGTH + pkt_end_2.cipher_len);
-    memcpy(MACStr,iv, IV_LENGTH);
+    memcpy(MACStr,pkt_end_2.iv, IV_LENGTH);
     memcpy(MACStr + 16,(void*)pkt_end_2.ciphertext.c_str(),pkt_end_2.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext

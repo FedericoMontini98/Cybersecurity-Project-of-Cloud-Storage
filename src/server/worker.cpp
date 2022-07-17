@@ -16,6 +16,15 @@ Worker::~Worker(){
     free(iv);
 }
 
+// generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
+int Worker::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen){
+	
+	// hmac_util.cpp
+	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, FILE_FRAGMENTS_SIZE);
+
+}
+
+
 // to test serialization
 /*void debug_serialize_pkt(uint8_t* buffer){
     login_bootstrap_pkt pkt;

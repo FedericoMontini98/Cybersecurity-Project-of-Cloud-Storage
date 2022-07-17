@@ -514,7 +514,7 @@ struct bootstrap_upload
     uint16_t code;
     uint32_t filename_len;
     string filename;
-    uint32_t response; // True: upload allowed  False: upload not allowed
+    uint32_t response; // 1: upload allowed  0: upload not allowed
     uint32_t counter;
     uint32_t size;
 

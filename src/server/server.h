@@ -10,10 +10,13 @@
 #include <vector>
 #include <string.h>
 #include "./../common/communication_packets.h"
+#include <sys/stat.h>
+#include <math.h>
 
 # define DEBUG true
 # define BACKLOG_QUEUE_SIZE  10
 # define FILE_FRAGMENTS_SIZE 8192
+# define FILE_PATH "./users/"
 
 class Server {
     int listener_socket = -1;
@@ -61,6 +64,7 @@ class Worker {
 
     Worker(Server* server, const int socket, const sockaddr_in addr);
     ~Worker();
+    int generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen);
 	bool send_message(void* msg, const uint32_t len);
     int receive_message(unsigned char*& recv_buffer, uint32_t& len);
 	int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, bool _generate_iv);
@@ -74,7 +78,12 @@ class Worker {
 	bool init_session();
 	int send_login_server_authentication(login_authentication_pkt& pkt);
 	X509* get_CA_certificate();
+    bool encrypted_file_receive(uint32_t size, string filename, uint32_t counter);
 	X509_CRL* get_crl();
+
+    //Commands
+    int upload(bootstrap_upload pkt);
+    int download(bootstrap_download pkt);
 
     void run();
 
