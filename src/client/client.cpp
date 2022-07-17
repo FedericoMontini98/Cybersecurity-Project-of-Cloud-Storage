@@ -617,7 +617,16 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 	pkt.encrypted_signing_len = cipherlen;
 	
 	// final serialization, this time there will be no dh keys in clear
-	final_pkt = (unsigned char*) pkt.serialize_message_no_clear_keys(final_pkt_len);
+	unsigned char* to_copy = (unsigned char*) pkt.serialize_message_no_clear_keys(final_pkt_len);
+	final_pkt = (unsigned char*) malloc(final_pkt_len);
+	
+	if (!final_pkt){
+		cerr << "malloc failed on final_pkt" << endl;
+		return -1;
+	}
+	
+	// copy
+	memcpy(final_pkt, to_copy, final_pkt_len);
 	
 	if (!send_message(final_pkt, final_pkt_len)){
 		cerr << "message cannot be sent" << endl;
@@ -627,6 +636,7 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 	free(ciphertext);
 	free(iv);
 	iv = nullptr;
+	free(final_pkt);
 	
 	return 0;
 }
@@ -841,6 +851,7 @@ bool Client::init_session(){
 			
 			if (ret != 0){
 				cerr << "error in signature verification" << endl;
+				return false;
 			}
 			
 			// frees

@@ -28,13 +28,13 @@ struct login_bootstrap_pkt
     EVP_PKEY *hmac_key_param = nullptr;
 	
 	// buffers
-	
+	uint8_t *serialized_pkt = nullptr;
+	size_t serialized_pkt_len = 0;
 	
     // function that return a void* serialized_pkt that contains the serialized packet
     // ready to be sent on the network
     void *serialize_message(int &len)
     {
-        uint8_t *serialized_pkt = nullptr;    // pointer to the serialized packet buffer to be returned
         int pointer_counter = 0;              // pointer_counter to fields
 											  
 		void *key_buffer_symmetric = nullptr; // pointer to the buffer with the serialized key for the sts parameter
@@ -63,7 +63,9 @@ struct login_bootstrap_pkt
 
         // total len of the serialized packet
         len = sizeof(certified_code) + sizeof(certified_username_len) + username_len + sizeof(symmetric_key_param_len) + sizeof(hmac_key_param_len) + symmetric_key_param_len + hmac_key_param_len;
-
+		
+		serialized_pkt_len = len;
+		
         // buffer allocation for the serialized packet
         serialized_pkt = (uint8_t *)malloc(len);
 
@@ -169,8 +171,13 @@ struct login_bootstrap_pkt
 	
 	// free keys
 	void free_pointers(){
-		EVP_PKEY_free(symmetric_key_param);
-		EVP_PKEY_free(hmac_key_param);
+		if (symmetric_key_param != nullptr) { EVP_PKEY_free(symmetric_key_param); }
+		if (hmac_key_param != nullptr)  	{ EVP_PKEY_free(hmac_key_param); 	  }
+		
+		// buffers
+		if (serialized_pkt != nullptr){ 
+			free(serialized_pkt);			 	  
+		}
 	}
 };
 
@@ -530,12 +537,9 @@ struct login_authentication_pkt {
 		if (hmac_key_param_client != nullptr)	       { EVP_PKEY_free(hmac_key_param_client);			 }
 		
 		// buffers
-		cout << "ehi" << endl;
 		if (serialized_pte != nullptr) {
 			secure_free(serialized_pte, serialized_pte_len);
 		}
-		
-		cout << "ehi" << endl;
 		
 		if (serialized_pkt != nullptr){
 			secure_free(serialized_pkt, serialized_pkt_len);

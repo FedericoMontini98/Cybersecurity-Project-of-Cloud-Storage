@@ -14,6 +14,7 @@
 # define DEBUG true
 # define BACKLOG_QUEUE_SIZE  10
 # define FILE_FRAGMENTS_SIZE 8192
+# define HMAC_KEY_SIZE 32
 
 class Server {
     int listener_socket = -1;
