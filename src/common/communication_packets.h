@@ -22,6 +22,63 @@ using namespace std;
 
 /*********************************************************************************************************************************/
 
+#define RECEIVED_MESSAGE 0
+struct received_message{
+
+    unsigned char* iv;
+    uint32_t cipher_len;
+    string ciphertext;
+    unsigned char* HMAC;
+
+    bool deserialize_message(uint8_t *serialized_pkt){
+        int pointer_counter = 0;
+
+        iv = (unsigned char*)malloc(IV_LENGTH);
+
+        // copy of the iv
+        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
+        pointer_counter += IV_LENGTH;
+
+        // copy of the ciphertext length
+        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
+        cipher_len = ntohl(cipher_len);
+        pointer_counter += sizeof(cipher_len);
+
+        // copy of the ciphertext
+        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
+        pointer_counter += cipher_len;
+
+        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
+
+        // copy of the ciphertext
+        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
+
+        free(serialized_pkt);
+
+        return true;
+    }
+
+    int deserialize_code(uint8_t *serialized_decrypted_pkt){
+
+        unsigned short code = -1;
+
+        string s = (char*)serialized_decrypted_pkt;
+        string delimiter = "$";
+        unsigned int pos;
+        //Extract the code
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            code = stoi(i);
+        }
+
+        return code;
+    }
+};
+
+/*********************************************************************************************************************************/
+
 // SENT IN CLEAR
 #define LOGIN_BOOTSTRAP 1
 
@@ -591,7 +648,7 @@ struct bootstrap_upload
         string s = (char*)serialized_decrypted_pkt;
         string delimiter = "$";
         unsigned int pos;
-        //Extract the filename length
+        //Extract the code
         pos = s.find(delimiter);
         if(pos!=string::npos){
             string i = s.substr(0, pos);

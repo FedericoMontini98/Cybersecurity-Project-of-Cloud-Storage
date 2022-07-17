@@ -1,14 +1,80 @@
 #include "server.h"
 
-int Worker::handle_command(unsigned char* cmd) {
-    const char* ptr;
-    int code;
+int Worker::handle_command(unsigned char* received_mes) {
 
-    // read the code
-    std::copy(ptr, ptr+sizeof(int), reinterpret_cast<char*>(code));
+    unsigned char*  MACStr;
+    uint32_t MAC_len; 
+    unsigned char* HMAC;
+    unsigned char* plaintxt;
+    int ptlen;
+    unsigned short int code;
 
-    if (DEBUG) {
-        cout << code << endl;
+    received_message first_pkt;
+
+	try {
+        
+        if(!first_pkt.deserialize_message(received_mes)){
+            cerr<<"Deserialize of the first packet failed!"<<endl;
+            // va fatta la free del received?
+            throw 0;
+        }
+
+        MACStr = (unsigned char*)malloc(IV_LENGTH + first_pkt.cipher_len);
+        memcpy(MACStr, first_pkt.iv, IV_LENGTH);
+        memcpy(MACStr + 16,(void*)first_pkt.ciphertext.c_str(),first_pkt.cipher_len);
+
+        //Generate the HMAC on the receiving side iv||ciphertext
+        generate_HMAC(MACStr,IV_LENGTH + first_pkt.cipher_len, HMAC,MAC_len);
+        //Free
+        free(MACStr);
+
+        //HMAC Verification
+        if(!verify_SHA256_MAC(HMAC,first_pkt.HMAC)){
+            cerr<<"Error: HMAC cant be verified"<<endl;
+            throw 1;
+        }
+
+        //Decrypt the ciphertext and obtain the plaintext
+        if(cbc_decrypt_fragment((unsigned char* )first_pkt.ciphertext.c_str(),first_pkt.cipher_len, plaintxt,ptlen)!=0){
+            cerr<<"Error during the decryption of the first packet"<<endl;
+            throw 2;
+        }
+
+        code = first_pkt.deserialize_code(plaintxt);
+        if(code == -1){
+            cerr<<"error in identifying the code!"<<endl;
+            throw 0;
+        }
+
+
+        /*********  FREE HOW TO HANDLE ********/
+        switch(code) {
+            case 1:
+                // code block
+                break;
+            case 5:
+                
+                bootstrap_upload pkt;
+                //Parsing and pkt parameters setting, it also free 'plaintxt'
+                if(!pkt.deserialize_plaintext(plaintxt)){
+                    cerr<<"Received wrong message type!"<<endl;
+                    throw 0;
+                }
+
+                int ret = upload(pkt);
+                break;
+                // code block
+        }
+
+    }
+    catch(int error_code){
+		if (error_code > 0) {
+            free(HMAC);
+		}
+		if (error_code > 1) {
+            free(plaintxt);
+		}
+		return -1;
     }
 
 }
