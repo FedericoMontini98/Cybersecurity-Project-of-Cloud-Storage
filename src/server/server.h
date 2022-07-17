@@ -85,6 +85,10 @@ class Worker {
     int upload(bootstrap_upload pkt);
     int download(bootstrap_download pkt);
 
+    //Utility function
+    unsigned char* receive_decrypt_and_verify_HMAC();
+    bool encrypt_generate_HMAC_and_send(string buffer);
+
     void run();
 
 };

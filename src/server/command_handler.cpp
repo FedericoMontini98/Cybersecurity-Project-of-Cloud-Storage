@@ -9,7 +9,7 @@ int Worker::handle_command(unsigned char* received_mes) {
     int ptlen;
     unsigned short int code;
 
-    received_message first_pkt;
+    generic_message first_pkt;
 
 	try {
         

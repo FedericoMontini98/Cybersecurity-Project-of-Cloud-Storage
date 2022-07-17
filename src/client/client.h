@@ -79,4 +79,8 @@ class Client{
 
     // packets methods
     int send_login_bootstrap(login_bootstrap_pkt& pkt, unsigned char* serialized_pkt);
+
+    //Utility function
+    unsigned char* receive_decrypt_and_verify_HMAC();
+    bool encrypt_generate_HMAC_and_send(string buffer);
 };

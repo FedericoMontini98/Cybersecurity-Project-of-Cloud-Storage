@@ -22,8 +22,8 @@ using namespace std;
 
 /*********************************************************************************************************************************/
 
-#define RECEIVED_MESSAGE 0
-struct received_message{
+#define GENERIC_MESSAGE 0
+struct generic_message{
 
     unsigned char* iv;
     uint32_t cipher_len;
@@ -75,6 +75,45 @@ struct received_message{
 
         return code;
     }
+
+    void *serialize_message(int &len)
+    {
+        uint8_t *serialized_pkt = nullptr;
+        int pointer_counter = 0;
+
+        len = (sizeof(cipher_len) + cipher_len + IV_LENGTH + HMAC_LENGTH);
+
+        serialized_pkt = (uint8_t *)malloc(len);
+        if (!serialized_pkt)
+        {
+            cerr << "serialized packet malloc failed" << endl;
+            return nullptr;
+        }
+
+        uint32_t certif_ciph_len = htonl(cipher_len);
+
+        // adding the iv
+        uint8_t *cert_iv = (uint8_t *)iv;
+        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
+        pointer_counter += IV_LENGTH;
+
+        // adding the ciphertext length
+        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
+        pointer_counter += sizeof(certif_ciph_len);
+
+        // adding the ciphertext
+        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
+        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
+        pointer_counter += cipher_len;
+
+        // adding the hmac
+        uint8_t *cert_hmac = (uint8_t *)HMAC;
+        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
+
+        return serialized_pkt;
+    }
+    
 };
 
 /*********************************************************************************************************************************/

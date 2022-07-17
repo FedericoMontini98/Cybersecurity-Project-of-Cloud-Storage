@@ -537,3 +537,4 @@ int validate_certificate(X509* CA_cert, X509_CRL* crl, X509* cert_to_verify) {
 	return 0;
 }
 
+
