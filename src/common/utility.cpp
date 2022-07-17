@@ -538,3 +538,11 @@ int validate_certificate(X509* CA_cert, X509_CRL* crl, X509* cert_to_verify) {
 	return 0;
 }
 
+// secure free
+void secure_free (void* addr, size_t len) 
+{
+	if(len > 0 && addr != nullptr){
+		memset(addr, 0, len);
+		free(addr);
+	}
+}

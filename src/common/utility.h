@@ -5,6 +5,7 @@
 #include <openssl/x509_vfy.h>
 #include <iostream>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 using namespace std;
@@ -34,3 +35,4 @@ X509* deserialize_certificate_X509(const void* cert_buffer, const uint32_t cert_
 unsigned char* sign_message(EVP_PKEY* prvkey, const unsigned char* msg, const size_t msg_len, unsigned int& signature_len);
 int verify_signature(EVP_PKEY* pubkey, const unsigned char* signature, const size_t signature_len, const unsigned char* cleartext, const size_t cleartext_len);
 int validate_certificate(X509* CA_cert, X509_CRL* crl, X509* cert_to_verify);
+void secure_free (void* addr, size_t len);
