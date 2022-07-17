@@ -721,24 +721,32 @@ bool Client::init_session(){
 				throw 2;
 			}
 			
-			// derive symmetric key using server_auth_pkt.symmetric_key_param_server_clear
+			// derive symmetric key and hmac key, hash them, take a portion of the hash for the 128 bit key
+			symmetric_key_no_hashed = derive_shared_secret(bootstrap_pkt.symmetric_key_param, server_auth_pkt.symmetric_key_param_server_clear);
 			
-			// symmetric_key_no_hashed = // IMPLEMENT
-			
-			// hmac_key_no_hashed = // IMPLEMENT
-			
-			// hash the keys
-			/*ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
+			if (!symmetric_key_no_hashed){
+				cerr << "failed to derive symmetric key" << endl;
+				return false;
+			}
+			ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
 			
 			if (ret != 0){
-				return ret;
+				cerr << "failed to hash symmetric key" << endl;
+				return false;
 			}
 			
+			hmac_key_no_hashed = derive_shared_secret(bootstrap_pkt.hmac_key_param, server_auth_pkt.hmac_key_param_server_clear);
+			
+			if (!hmac_key_no_hashed){
+				cerr << "failed to derive hmac key" << endl;
+				return false;
+			}
 			ret = hash_hmac_key(hmac_key, hmac_key_no_hashed);
 			
 			if (ret != 0){
-				return ret;
-			}*/
+				cerr << "failed to hash hmac key" << endl;
+				return false;
+			}
 			
 			// decrypt the encrypted part using the derived symmetric key and the received iv
 			free(iv);
@@ -815,8 +823,6 @@ bool Client::init_session(){
 				cerr << "error in signature verification" << endl;
 			}
 			
-			cout << "ok" << endl;
-			
 			free(receive_buffer);
 			
 		}catch (int error_code){
@@ -851,6 +857,8 @@ bool Client::init_session(){
 	// free dh parameters
 	EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
 	EVP_PKEY_free(bootstrap_pkt.hmac_key_param);
+	
+	//receive feedback
 
     return true;
 }

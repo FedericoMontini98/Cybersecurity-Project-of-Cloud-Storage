@@ -50,13 +50,16 @@ class Worker {
     /* must be freed */
     EVP_PKEY* private_key = nullptr; // contain a copy of the private_key of the server
 	
-    //EDIT set to nullptr
+    /*//EDIT set to nullptr
     unsigned char* symmetric_key = (unsigned char*) 
 	"0123456789012345"; 
 	
 	//EDIT set to nullptr
     unsigned char* hmac_key = (unsigned char*)
-	"01234567890123450123456789012345";
+	"01234567890123450123456789012345";*/
+	
+	unsigned char* symmetric_key = nullptr;
+	unsigned char* hmac_key = nullptr;
 
     public:
 

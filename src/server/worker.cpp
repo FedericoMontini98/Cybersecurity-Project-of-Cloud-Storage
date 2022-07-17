@@ -521,24 +521,33 @@ bool Worker::init_session(){
 	server_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
 	server_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
 	
-	// derive key using login_bootstrap_pkt.symmetric_key_param and hmac one
+	// derive symmetric key and hmac key, hash them, take a portion of the hash for the 128 bit key
+	symmetric_key_no_hashed = derive_shared_secret(server_auth_pkt.symmetric_key_param_server, bootstrap_pkt.symmetric_key_param);
 	
-	// symmetric_key_no_hashed = // IMPLEMENT
-	
-	// hmac_key_no_hashed = // IMPLEMENT
-	
-	// hash the keys
-	/*ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
+	if (!symmetric_key_no_hashed){
+		cerr << "failed to derive symmetric key" << endl;
+		return false;
+	}
+	ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
 	
 	if (ret != 0){
-		return ret;
+		cerr << "failed to hash symmetric key" << endl;
+		return false;
 	}
 	
+	hmac_key_no_hashed = derive_shared_secret(server_auth_pkt.hmac_key_param_server, bootstrap_pkt.hmac_key_param);
+	
+	if (!hmac_key_no_hashed){
+		cerr << "failed to derive hmac key" << endl;
+		return false;
+	}
 	ret = hash_hmac_key(hmac_key, hmac_key_no_hashed);
 	
 	if (ret != 0){
-		return ret;
-	}*/
+		cerr << "failed to hash hmac key" << endl;
+		return false;
+	}
+	
 	
 	// encrypt and send login_server_authentication_pkt (also generate iv)
 	if (send_login_server_authentication(server_auth_pkt) != 0){
@@ -559,25 +568,6 @@ bool Worker::init_session(){
 				cerr << "ERR: some error in deserialize client_auth_pkt" << endl;
 				throw 2;
 			}
-			
-			// derive symmetric key using server_auth_pkt.symmetric_key_param_server_clear
-			
-			// symmetric_key_no_hashed = // IMPLEMENT
-			
-			// hmac_key_no_hashed = // IMPLEMENT
-			
-			// hash the keys
-			/*ret = hash_symmetric_key(symmetric_key, symmetric_key_no_hashed);
-			
-			if (ret != 0){
-				return ret;
-			}
-			
-			ret = hash_hmac_key(hmac_key, hmac_key_no_hashed);
-			
-			if (ret != 0){
-				return ret;
-			}*/
 			
 			// decrypt the encrypted part using the derived symmetric key and the received iv
 			free(iv);
