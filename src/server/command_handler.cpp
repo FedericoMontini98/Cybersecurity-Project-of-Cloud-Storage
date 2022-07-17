@@ -49,21 +49,51 @@ int Worker::handle_command(unsigned char* received_mes) {
 
         /*********  FREE HOW TO HANDLE ********/
         switch(code) {
-            case 1:
-                // code block
-                break;
-            case 5:
-                
-                bootstrap_upload pkt;
+            /**************************************************************************************/
+            case BOOTSTRAP_UPLOAD:
+            {
+                bootstrap_upload pkt_u;
                 //Parsing and pkt parameters setting, it also free 'plaintxt'
-                if(!pkt.deserialize_plaintext(plaintxt)){
+                if(!pkt_u.deserialize_plaintext(plaintxt)){
                     cerr<<"Received wrong message type!"<<endl;
                     throw 0;
                 }
-
-                upload(pkt);
-                break;
-                // code block
+                int ret = upload(pkt_u);
+                return ret;
+            }
+            /**************************************************************************************/
+            case BOOTSTRAP_DOWNLOAD:     
+            {
+                bootstrap_download pkt_d;
+                //Parsing and pkt parameters setting, it also free 'plaintxt'
+                if(!pkt_d.deserialize_plaintext(plaintxt)){
+                    cerr<<"Received wrong message type!"<<endl;
+                    throw 0;
+                }
+                int ret = download(pkt_d);
+                return ret;
+            }
+            /**************************************************************************************/
+            case BOOTSTRAP_LIST:
+            {
+                return 0;
+            }
+            /**************************************************************************************/
+            case BOOTSTRAP_RENAME:
+            {
+                return 0;
+            }
+            /**************************************************************************************/
+            case BOOTSTRAP_DELETE:
+            {
+                return 0;
+            }
+            /**************************************************************************************/
+            case BOOTSTRAP_LOGOUT:
+            {
+                return 0;
+            }
+            /**************************************************************************************/
         }
 
     }
@@ -96,6 +126,24 @@ bool Worker::checkFileExistance(string filename){
         return false;
     }
     return true;
+}
+
+/**
+ * @brief Function that check the existance of the file and return the file size
+ * 
+ * @param filename name of the file to download
+ * @return size_t size of the file, 0 if is not present
+ */
+size_t Worker::checkFileExistanceAndGetSize(string filename){
+    string path = FILE_PATH + this->logged_user + "/" + filename;
+    if(DEBUG){
+        cout<<"PATH: "<<path<<endl;
+    }
+    struct stat buffer;
+    if (stat(path.c_str(),&buffer)!=0){ //stat failed the file doesnt exists
+        return 0;
+    }
+    return buffer.st_size;
 }
 
 /**
@@ -201,6 +249,106 @@ bool Worker::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
 
     return true;
 }
+
+/**
+ * Function that send the specified file through chunks of specified max size
+ * 
+ * @param filename : name of the file to send
+ * @param counter : current counter number
+ * @return int : result of the operation
+ */
+int Worker::send_encrypted_file (string filename, uint32_t& counter){
+    unsigned char* buffer;
+    // build a string that cointain the path of the file
+    string path = FILE_PATH + this->logged_user + "/" + filename;
+    //open the file
+    FILE* file = fopen(path.c_str(), "rb"); 
+    // If !file the file cant be open or is not present inside the dir
+    if (!file){
+        return false;
+    }
+    struct stat buf;
+    if (stat(path.c_str(),&buf)!=0){ //stat failed
+        cout<<"Failed stat function: File doesn't exists in the Upload dir"<<endl;
+        return 0;
+    }
+
+    //Calculate the number of chunks to send
+    size_t num_chunk_to_send = ceil((float)buf.st_size/FILE_FRAGMENTS_SIZE);
+    if(DEBUG){
+        cout << "Number of chunks: " << num_chunk_to_send << endl << endl;
+    }
+
+    buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
+    if(!buffer){            
+        cerr << "ERR: cannot allocate a buffer for the file fragment" << endl;
+        return -1;
+    }
+    memset(buffer,0,FILE_FRAGMENTS_SIZE);
+    int ret;
+    //Start to send the chunks
+    for(size_t i = 0; i < num_chunk_to_send; ++i){
+
+        // read bytes from file, the pointer is automatically increased
+        ret = fread(buffer, 1, FILE_FRAGMENTS_SIZE, file);
+        if ( ferror(file) != 0 ){
+            std::cerr << "ERR: file reading error occured" << endl;
+            return -1;
+        }
+        //Declare a new packet & init its fields
+        file_upload pkt;
+        pkt.code = FILE_UPLOAD;
+        pkt.counter = counter;
+        pkt.msg_len = ret;
+        pkt.msg = (unsigned char*)buffer;
+
+        unsigned char* ciphertext;
+        int cipherlen;
+
+        string to_encrypt = to_string(pkt.code) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.msg_len) + "$" + reinterpret_cast<char*>(pkt.msg);
+        if(cbc_encrypt_fragment((unsigned char*)to_encrypt.c_str(), strlen(to_encrypt.c_str()) , ciphertext, cipherlen, true) != 0){
+            cerr<<"Failed encryption during the file send"<<endl;
+            return -1;
+        }
+
+        // Get the HMAC
+        uint32_t MAC_len; 
+        unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+        unsigned char* HMAC;
+        memcpy(MACStr,iv, IV_LENGTH);
+        memcpy(MACStr + 16,ciphertext,cipherlen);
+
+        pkt.ciphertext = (const char*)ciphertext;
+        pkt.cipher_len = cipherlen;
+        generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
+        pkt.HMAC = HMAC;
+        pkt.iv = this->iv;
+
+        //Initialization of the data to serialize
+        unsigned char* data;
+        int data_length;
+
+        data = (unsigned char*)pkt.serialize_message(data_length);
+
+        //Send the first message
+        if(!send_message((void *)data, data_length)){
+            cout<<"Error during packet #1 forwarding"<<endl;
+            free(MACStr);
+            free(ciphertext);
+            return -1;
+        }
+
+
+        free(MACStr);
+        free(ciphertext);
+        counter++;
+        memset(buffer,0,FILE_FRAGMENTS_SIZE);
+    }
+
+    free(buffer);
+    return 0;
+}
+
 
 /**
  * @brief function that manage the upload request from the client
@@ -320,6 +468,98 @@ int Worker::upload(bootstrap_upload pkt){
  * @return int error code, if =0 its a success
  */
 int Worker::download(bootstrap_download pkt){
+    uint32_t counter = pkt.counter;
+    if(DEBUG){
+        cout<<"Received an upload packet with the following fields: "<<endl;
+        cout<<"code: "<<pkt.code<<"\nfilename_len: "<<pkt.filename_len<<"\n filename: "<<pkt.filename<<"\n counter: "<<counter<<"\n size: "<<pkt.size<<endl;
+    }
+
+    /**********************************************************/
+    /******* Phase 1: received iv + encrypt_msg + HMAC ********/
+    counter++;
+    bootstrap_download response_pkt;
+    //Check if there is a file with the same name inside the user dir
+    response_pkt.size = checkFileExistanceAndGetSize(pkt.filename); // = 0 if the file doesnt exists
+    //Fill the other fields
+    response_pkt.code = BOOTSTRAP_DOWNLOAD;
+    response_pkt.filename = string("--");
+    response_pkt.filename_len = strlen(response_pkt.filename.c_str());
+    response_pkt.counter = counter;
+
+    // Prepare the plaintext to encrypt
+    string buffer = to_string(response_pkt.code) + "$" + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.counter) + "$" + to_string(response_pkt.size);
+
+    //Send the MSG
+    if(!encrypt_generate_HMAC_and_send(buffer)){
+        cerr<<"Error during MSG#2 send"<<endl;
+        return -2;
+    }
+    counter++;
+
+    /***************************************************************************************/
+    /****************************** Phase 2: send the file *********************************/
+
+    if(!send_encrypted_file(pkt.filename,counter)){
+        cerr<<"Phase 2 failed: error during file send in Download"<<endl;
+        return -3;
+    }
+
+    /***************************************************************************************/
+    /************************** Phase 3: send the eof MSG #4 *******************************/
+
+    end_download pkt_end_1;
+    pkt_end_1.code = FILE_DL_HS;
+    pkt_end_1.response = "END";
+    pkt_end_1.counter = counter;
+
+    // Prepare the plaintext to encrypt
+    buffer =  to_string(pkt_end_1.code) + "$" + pkt_end_1.response + "$" + to_string(pkt_end_1.counter);
+
+    if(!encrypt_generate_HMAC_and_send(buffer)){
+        cerr<<"Error during encryption and send of MSG#4 of Upload"<<endl;
+        return -4;
+    }
+    counter++;
+
+    /***************************************************************************************/
+    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 5 ******************** //
+    unsigned char* plaintxt;
+    plaintxt = receive_decrypt_and_verify_HMAC();
+
+    if(plaintxt == nullptr){
+        cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
+        return -5;
+    }
+
+    end_download pkt_end_2;
+
+    //Parsing and pkt parameters setting, it also FREE(plaintxt)
+    if(!pkt_end_2.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
+        return -5;
+    }
+
+    if(DEBUG){
+        cout<<"You received the following cripted message: "<<endl;
+        cout<<"Code: "<<pkt_end_2.code<<";\n filename:"<<pkt_end_2.response<<";\n counter:"<<pkt_end_2.counter<<endl;
+    }
+
+    // Check on rcvd packets values
+    if( pkt_end_2.counter != counter ){
+        cerr<<"Wrong counter value, we received: "<<pkt_end_2.counter<<" instead of: "<<counter<<endl;
+        return -5;
+    }
+
+    // Check the response of the server
+    if(!strcmp(pkt_end_2.response.c_str(),"OK")){
+        cerr<<"There was a problem during the finalization of the upload!"<<endl;
+        return -5;
+    }
+
+    cout<<"***************************************************************************************"<<endl;
+    cout<<"************************ THE UPLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
+
+    return 0;
 
     return 0;
 }
