@@ -538,6 +538,7 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
         pkt.cipher_len = cipherlen;
         generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
         pkt.HMAC = HMAC;
+        pkt.iv = this->iv;
 
         //Initialization of the data to serialize
         unsigned char* data;
@@ -858,7 +859,7 @@ int Client::upload(string username){
     //Initialization of the data to serialize
     pkt.ciphertext = (const char*)ciphertext;
     pkt.cipher_len = cipherlen;
-    pkt.iv = iv;
+    pkt.iv = this->iv;
     generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
     pkt.HMAC = HMAC;
 
@@ -895,6 +896,8 @@ int Client::upload(string username){
         cerr<<"Received the wrong packet!"<<endl;
         return -2;
     }
+
+    this->iv = iv;
 
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr,iv, IV_LENGTH);
@@ -1056,7 +1059,6 @@ int Client::upload(string username){
     cout<<"***************************************************************************************"<<endl;
     cout<<"************************ THE UPLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
 
-    free(iv);
     return 0;
 }
 
@@ -1125,7 +1127,6 @@ int Client::download(string username){
     //send_message((void*)hmac, /*hmacsize*/)
 
     //ret = receive_message()
-    free(iv);
     return 0;
 }
 

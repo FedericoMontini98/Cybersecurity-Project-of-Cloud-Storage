@@ -626,6 +626,7 @@ struct bootstrap_upload
 struct file_upload
 {
     //In clear fields
+    unsigned char* iv;
     uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
@@ -640,7 +641,7 @@ struct file_upload
         uint8_t *serialized_pkt = nullptr;
         int pointer_counter = 0;
 
-        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH);
+        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH + IV_LENGTH);
 
         serialized_pkt = (uint8_t *)malloc(len);
         if (!serialized_pkt)
@@ -650,6 +651,11 @@ struct file_upload
         }
 
         uint32_t certif_ciph_len = htonl(cipher_len);
+
+        // adding the iv
+        uint8_t *cert_iv = (uint8_t *)iv;
+        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
+        pointer_counter += IV_LENGTH;
 
         // adding the ciphertext length
         memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
@@ -670,6 +676,12 @@ struct file_upload
 
     bool deserialize_message(uint8_t *serialized_pkt){
         int pointer_counter = 0;
+
+        iv = (unsigned char*)malloc(IV_LENGTH);
+
+        // copy of the iv
+        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
+        pointer_counter += IV_LENGTH;
 
         // copy of the ciphertext length
         memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
@@ -737,6 +749,7 @@ struct file_upload
 #define FILE_EOF_HS 7
 struct end_upload{
     // Sent through the net
+    unsigned char* iv;
     uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
@@ -751,7 +764,7 @@ struct end_upload{
         uint8_t *serialized_pkt = nullptr;
         int pointer_counter = 0;
 
-        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH);
+        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH + IV_LENGTH);
 
         serialized_pkt = (uint8_t *)malloc(len);
         if (!serialized_pkt)
@@ -761,6 +774,11 @@ struct end_upload{
         }
 
         uint32_t certif_ciph_len = htonl(cipher_len);
+
+        // adding the iv
+        uint8_t *cert_iv = (uint8_t *)iv;
+        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
+        pointer_counter += IV_LENGTH;        
 
         // adding the ciphertext length
         memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
@@ -782,6 +800,12 @@ struct end_upload{
     bool deserialize_message(uint8_t *serialized_pkt)
     {
         int pointer_counter = 0;
+
+        iv = (unsigned char*)malloc(IV_LENGTH);
+
+        // copy of the iv
+        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
+        pointer_counter += IV_LENGTH;
 
         // copy of the ciphertext length
         memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
@@ -964,9 +988,10 @@ struct bootstrap_download
 /*********************************************************************************************************************************/
 
 #define FILE_DOWNLOAD 9
-struct file_upload
+struct file_download
 {
     //In clear fields
+    unsigned char* iv;
     uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
@@ -981,7 +1006,7 @@ struct file_upload
         uint8_t *serialized_pkt = nullptr;
         int pointer_counter = 0;
 
-        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH);
+        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH + IV_LENGTH);
 
         serialized_pkt = (uint8_t *)malloc(len);
         if (!serialized_pkt)
@@ -991,6 +1016,11 @@ struct file_upload
         }
 
         uint32_t certif_ciph_len = htonl(cipher_len);
+
+        // adding the iv
+        uint8_t *cert_iv = (uint8_t *)iv;
+        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
+        pointer_counter += IV_LENGTH;        
 
         // adding the ciphertext length
         memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
@@ -1011,6 +1041,12 @@ struct file_upload
 
     bool deserialize_message(uint8_t *serialized_pkt){
         int pointer_counter = 0;
+
+        iv = (unsigned char*)malloc(IV_LENGTH);
+
+        // copy of the iv
+        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
+        pointer_counter += IV_LENGTH;
 
         // copy of the ciphertext length
         memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
@@ -1076,8 +1112,9 @@ struct file_upload
 /*********************************************************************************************************************************/
 
 #define FILE_DL_HS 10
-struct end_upload{
+struct end_download{
     // Sent through the net
+    unsigned char* iv;
     uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
@@ -1092,7 +1129,7 @@ struct end_upload{
         uint8_t *serialized_pkt = nullptr;
         int pointer_counter = 0;
 
-        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH);
+        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH + IV_LENGTH);
 
         serialized_pkt = (uint8_t *)malloc(len);
         if (!serialized_pkt)
@@ -1102,6 +1139,11 @@ struct end_upload{
         }
 
         uint32_t certif_ciph_len = htonl(cipher_len);
+
+        // adding the iv
+        uint8_t *cert_iv = (uint8_t *)iv;
+        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
+        pointer_counter += IV_LENGTH;        
 
         // adding the ciphertext length
         memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
@@ -1123,6 +1165,12 @@ struct end_upload{
     bool deserialize_message(uint8_t *serialized_pkt)
     {
         int pointer_counter = 0;
+
+        iv = (unsigned char*)malloc(IV_LENGTH);
+
+        // copy of the iv
+        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
+        pointer_counter += IV_LENGTH;        
 
         // copy of the ciphertext length
         memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
@@ -1178,6 +1226,5 @@ struct end_upload{
     }
 
 };
-
 
 /*********************************************************************************************************************************/
