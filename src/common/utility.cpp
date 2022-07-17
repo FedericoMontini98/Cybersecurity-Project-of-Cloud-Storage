@@ -457,6 +457,7 @@ int verify_signature(EVP_PKEY* pubkey, const unsigned char* signature, const siz
 		}
 		
 		ret = EVP_VerifyFinal(ctx, signature, signature_len, pubkey);
+
 		if (ret != 1) {
 			cerr << "error in verify final for signature" << endl;
 			throw 4;

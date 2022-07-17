@@ -204,7 +204,6 @@ struct login_refuse_connection_pkt
 struct login_authentication_pkt {
 	
 	// clear fields
-    uint16_t code = LOGIN_AUTHENTICATION;
 	uint32_t cert_len = 0;
 	uint32_t symmetric_key_param_server_clear_len; 
 	uint32_t hmac_key_param_server_clear_len; 
@@ -227,7 +226,6 @@ struct login_authentication_pkt {
 	EVP_PKEY* hmac_key_param_server;
 	EVP_PKEY* symmetric_key_param_client;
 	EVP_PKEY* hmac_key_param_client;
-	
 	
 	// serialize the part to be signed and then encrypted, this function must be called before serialize_message
 	void* serialize_part_to_encrypt(int &len){
@@ -265,7 +263,7 @@ struct login_authentication_pkt {
         uint32_t certified_hmac_key_param_len_client = htonl(hmac_key_param_len_client);
 		
 		// lenght copies
-        memcpy(serialized_pte, &certified_symmetric_key_param_len_server, sizeof(certified_symmetric_key_param_len_server));
+        memcpy(serialized_pte + pointer_counter, &certified_symmetric_key_param_len_server, sizeof(certified_symmetric_key_param_len_server));
         pointer_counter += sizeof(certified_symmetric_key_param_len_server);
 		
 		memcpy(serialized_pte + pointer_counter, &certified_hmac_key_param_len_server, sizeof(certified_hmac_key_param_len_server));
@@ -307,10 +305,6 @@ struct login_authentication_pkt {
 			return nullptr;
 		}
 		
-		//certified lenghts
-		uint16_t certified_code = htons(code);
-		uint32_t certified_encrypted_signing_len = htonl(encrypted_signing_len);
-		
 		// serialize the certificate
 		cert_buffer = serialize_certificate_X509(cert, cert_len);
 		uint32_t certified_cert_len = htonl(cert_len);
@@ -325,7 +319,10 @@ struct login_authentication_pkt {
 		key_buffer_hmac_server_clear = serialize_evp_pkey(hmac_key_param_server_clear, hmac_key_param_server_clear_len);
 		uint32_t certified_hmac_key_server_clear_len = htonl(hmac_key_param_server_clear_len);
 		
-		len = sizeof(certified_code) + sizeof(certified_cert_len) + sizeof(certified_symmetric_key_server_clear_len) + sizeof(certified_hmac_key_server_clear_len) 
+		//certified lenghts
+		uint32_t certified_encrypted_signing_len = htonl(encrypted_signing_len);
+		
+		len = sizeof(certified_cert_len) + sizeof(certified_symmetric_key_server_clear_len) + sizeof(certified_hmac_key_server_clear_len) 
 		+ sizeof(certified_encrypted_signing_len) + IV_LENGTH + cert_len + symmetric_key_param_server_clear_len + hmac_key_param_server_clear_len + encrypted_signing_len;
 		
 		// buffer allocation for the serialized packet
@@ -336,12 +333,8 @@ struct login_authentication_pkt {
             return nullptr;
         }
 		
-		// copy code
-		memcpy(serialized_pkt, &certified_code, sizeof(certified_code));
-		pointer_counter += sizeof(certified_code);
-		
 		// copy lengths
-		memcpy(serialized_pkt + pointer_counter, &certified_cert_len, sizeof(certified_cert_len));
+		memcpy(serialized_pkt, &certified_cert_len, sizeof(certified_cert_len));
 		pointer_counter += sizeof(certified_cert_len);
 		
 		memcpy(serialized_pkt + pointer_counter, &certified_symmetric_key_server_clear_len, sizeof(certified_symmetric_key_server_clear_len));
@@ -375,21 +368,11 @@ struct login_authentication_pkt {
     bool deserialize_message(uint8_t* serialized_pkt){
 		int pointer_counter = 0;
 
-        // copy of the code
-        memcpy (&code, serialized_pkt, sizeof(code));
-        code = ntohs(code);
-        pointer_counter += sizeof(code);
-		
-		// pkt type mismatch
-		if (code != LOGIN_AUTHENTICATION){
-			cerr << "invalid code in login bootstrap" << endl;
-			return false;
-		}
-		// code, cert_len, dh_symm_key_len, dh_hmac_key_len, encrypted_signing_len, iv_cbc, cert_len, 
+		// cert_len, dh_symm_key_len, dh_hmac_key_len, encrypted_signing_len, iv_cbc, cert_len, 
 		// dh_symm_key, dh_hmac_key, encrypted_signing
 		
 		// copy cert_len
-		memcpy (&cert_len, serialized_pkt + pointer_counter, sizeof(cert_len));
+		memcpy (&cert_len, serialized_pkt, sizeof(cert_len));
         cert_len = ntohl(cert_len);
         pointer_counter += sizeof(cert_len);
 		
@@ -448,7 +431,7 @@ struct login_authentication_pkt {
         */
     }
 	
-	// deserialize the decripted part 
+	// deserialize the decripted part SBAGLIATA
 	bool deserialize_encrypted_part(uint8_t* plaintext){
 		int pointer_counter = 0;
 		

@@ -353,35 +353,7 @@ EVP_PKEY* Worker::generate_sts_key_param(){
 	return generate_dh_key();
 }
 
-// read server certificate, returns null on failure
-X509* Worker::get_certificate() {
-	
-	FILE* file = nullptr;
-	X509* cert = nullptr;
 
-	try {
-		file = fopen(filename_certificate.c_str(), "r");
-		if (!file) {
-			cerr << "cannot find server cetificate" << endl;
-			throw 0;
-		}
-
-		cert = PEM_read_X509(file, nullptr, nullptr, nullptr);
-		if (!cert) {
-			cerr << "cannot read server certificate correctly" << endl;
-			throw 1;
-		}
-
-	} catch (int e) {
-		if (e >= 1) {
-			fclose(file);
-		}
-		return nullptr;
-	}
-
-	fclose(file);
-	return cert;
-}
 
 /**
  * this method checks that a user is registered in the 'application at the login
@@ -421,8 +393,6 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	int cipherlen;
 	int ret;
 	
-	pkt.code = LOGIN_AUTHENTICATION;
-	
 	// load server certificate
 	pkt.cert = get_certificate();
 	
@@ -431,6 +401,7 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 		return -1;
 	}
 	
+	// serialize the part to encrypt
 	part_to_encrypt = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
 	
 	if (part_to_encrypt == nullptr){
@@ -438,7 +409,7 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 		return -1;
 	}
 	
-	// sign
+	// sign it
 	signature = sign_message(private_key, part_to_encrypt, pte_len, signature_len);
 	if (signature == nullptr){
 		cerr << "cannot generate valid signature" << endl;
@@ -456,6 +427,7 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	pkt.encrypted_signing = ciphertext;
 	pkt.encrypted_signing_len = cipherlen;
 	
+	// final serialization
 	final_pkt = (unsigned char*) pkt.serialize_message(final_pkt_len);
 	
 	if (!send_message(final_pkt, final_pkt_len)){
@@ -563,6 +535,42 @@ bool Worker::init_session(){
 	send_login_server_authentication(server_auth_pkt);
 	
 	// free dh params on the struct
+	
+	
+	
+	
+	// all is ok
+	logged_user = bootstrap_pkt.username;
+}
+
+// read server certificate, returns null on failure
+X509* Worker::get_certificate() {
+	
+	FILE* file = nullptr;
+	X509* cert = nullptr;
+
+	try {
+		file = fopen(filename_certificate.c_str(), "r");
+		if (!file) {
+			cerr << "cannot find server certificate" << endl;
+			throw 0;
+		}
+
+		cert = PEM_read_X509(file, nullptr, nullptr, nullptr);
+		if (!cert) {
+			cerr << "cannot read server certificate correctly" << endl;
+			throw 1;
+		}
+
+	} catch (int e) {
+		if (e >= 1) {
+			fclose(file);
+		}
+		return nullptr;
+	}
+
+	fclose(file);
+	return cert;
 }
 
 X509* Worker::get_CA_certificate (){

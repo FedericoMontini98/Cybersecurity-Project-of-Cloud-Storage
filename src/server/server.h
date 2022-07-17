@@ -36,6 +36,7 @@ class Worker {
     Server* server;
     int socket_fd;
     sockaddr_in client_addr;
+	string logged_user;
 	string filename_certificate = "./Server_cert.pem";
 	string filename_ca_certificate = "./Your Organisation CA_cert.pem";
 	string filename_ca_crl = "./Your Organisation CA_crl.pem";
@@ -68,11 +69,11 @@ class Worker {
     int handle_command(unsigned char* cmd);
 	bool load_private_server_key();
 	EVP_PKEY* generate_sts_key_param();
-	X509* get_certificate();
 	bool check_username(string username);
 	bool generate_iv (const EVP_CIPHER* cipher);
 	bool init_session();
 	int send_login_server_authentication(login_authentication_pkt& pkt);
+	X509* get_certificate();
 	X509* get_CA_certificate();
 	X509_CRL* get_crl();
 
