@@ -681,6 +681,7 @@ bool Worker::init_session(){
 	if (send_login_server_authentication(server_auth_pkt) != 0){
 		return false;
 	}
+
 	
 	// receive client authentication pkt
 	while (true){
@@ -819,8 +820,6 @@ bool Worker::init_session(){
 	bootstrap_pkt.free_pointers();
 	server_auth_pkt.free_pointers();
 	client_auth_pkt.free_pointers();
-	
-	cout << "ok" << endl;
 	
 	return true;
 }

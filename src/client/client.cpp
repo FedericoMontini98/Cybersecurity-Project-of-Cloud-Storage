@@ -820,6 +820,7 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
     }
 
     secure_free(send_buffer, len);
+    secure_free(to_copy, len);
 	
     return 0;
     
@@ -878,12 +879,14 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 		cerr << "cannot generate valid ciphertext" << endl;
 		return -1;
 	}
-	
+   
 	pkt.iv_cbc = iv;
 	pkt.encrypted_signing = ciphertext;
 	pkt.encrypted_signing_len = cipherlen;
 	
 	// final serialization, this time there will be no dh keys in clear
+    secure_free(to_copy, pte_len);
+    secure_free(part_to_encrypt, pte_len);
 	to_copy = (unsigned char*) pkt.serialize_message_no_clear_keys(final_pkt_len);
 	final_pkt = (unsigned char*) malloc(final_pkt_len);
 	
@@ -899,12 +902,13 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 		cerr << "message cannot be sent" << endl;
 		return -1;
 	}
-	
-    free(part_to_encrypt);
+
 	free(ciphertext);
 	free(iv);
+    free(signature);
 	iv = nullptr;
-	free(final_pkt); 
+    secure_free(to_copy, final_pkt_len);
+	secure_free(final_pkt, final_pkt_len); 
 	
 	return 0;
 }
@@ -981,6 +985,10 @@ bool Client::init_session(){
         cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
         return false;
     }
+
+    cout<<"==============================================================="<<endl;
+	cout<<"=            CONNECTED TO SERVER: USERNAME IS VALID           ="<<endl;
+	cout<<"==============================================================="<<endl<<endl<<endl;
 	
 	// receive login_server_authentication_pkt
 	while (true){
@@ -992,7 +1000,7 @@ bool Client::init_session(){
 				throw 1;
 			}
 			
-			// check if it is consistent with server_auth_pkt
+			// check if it is consistent with server_auth_pkt, the call already free the buffer
 			if (!server_auth_pkt.deserialize_message(receive_buffer)){
 				cerr << "ERR: some error in deserialize server_auth_pkt" << endl;
 				throw 2;
@@ -1120,6 +1128,7 @@ bool Client::init_session(){
 			
 			// frees
 			free(signed_text);
+            free(to_copy);
 			free(receive_buffer);
 			X509_free(ca_cert);
 			X509_CRL_free(ca_crl);
@@ -1139,6 +1148,10 @@ bool Client::init_session(){
 		
 		break;
 	}
+
+    cout<<"======================================================="<<endl;
+	cout<<"=            SERVER CORRECTLY AUTHENTICATED           ="<<endl;
+	cout<<"======================================================="<<endl<<endl<<endl;
 	
 	// all is verified, time to send client authentication packet 
 	client_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear;
@@ -1160,38 +1173,15 @@ bool Client::init_session(){
 	if (send_login_client_authentication(client_auth_pkt) != 0){
 		return false;
 	}
+
+    cout<<"============================================================"<<endl;
+	cout<<"=            CLIENT AUTHENTICATION CORRECTLY SENT          ="<<endl;
+	cout<<"============================================================"<<endl<<endl<<endl;
 	
 	// free all
 	bootstrap_pkt.free_pointers();
 	server_auth_pkt.free_pointers();
     client_auth_pkt.free_pointers();
-
-    /*if (server_auth_pkt.serialized_pkt != nullptr){
-        secure_free(server_auth_pkt.serialized_pkt, server_auth_pkt.serialized_pkt_len);
-    }
-
-    cout << "a" << endl;
-
-    if (client_auth_pkt.serialized_pkt != nullptr){
-        secure_free(client_auth_pkt.serialized_pkt, client_auth_pkt.serialized_pkt_len);
-    }
-
-    cout << "b" << endl;
-
-    if(server_auth_pkt.serialized_pte != nullptr){
-        secure_free(server_auth_pkt.serialized_pte, server_auth_pkt.serialized_pte_len);
-    }
-
-    cout << "c" << endl;
-
-    if(client_auth_pkt.serialized_pte != nullptr){
-        secure_free(client_auth_pkt.serialized_pte, client_auth_pkt.serialized_pte_len);
-    }
-
-    cout << "d" << endl;*/
-	
-	// client consider the authentication as done, if server close the connection it means
-	// that an error occurs on signature verification
 
     return true;
 }
