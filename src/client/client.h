@@ -64,7 +64,8 @@ class Client{
     int generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen);
     int cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, bool _generate_iv);
     int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen);
-    int send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint32_t& counter);
+    int send_encrypted_file (string filename, uint32_t& counter);
+    bool encrypted_file_receive(uint32_t size, string filename, uint32_t& counter);
     EVP_PKEY* generate_sts_key_param();
 	X509* get_certificate();
 	X509* get_CA_certificate();
@@ -80,6 +81,10 @@ class Client{
     uint32_t file_exists_to_download(string filename, string username);
 
     // packets methods
+    //Utility function
+    unsigned char* receive_decrypt_and_verify_HMAC();
+    bool encrypt_generate_HMAC_and_send(string buffer);
+
     int send_login_bootstrap(login_bootstrap_pkt& pkt);
 	int send_login_client_authentication(login_authentication_pkt& pkt);
 };

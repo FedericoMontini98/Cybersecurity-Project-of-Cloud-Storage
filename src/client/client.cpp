@@ -7,7 +7,7 @@
 #include "./../common/utility.h"
 #include <sys/stat.h>
 #include <sstream>
-
+#include <math.h>
 
 // CONSTRUCTOR
 Client::Client(const uint16_t _port){
@@ -23,6 +23,116 @@ Client::~Client(){
     free(hmac_key);      
     free(iv);
 }
+
+/**
+ * @brief manage the receive and various general checks on the received packet
+ *        MANAGE THE plaintxt destruction!
+ * @return unsigned* the plaintext to deserialize inside the correct packet type
+ */
+unsigned char* Client::receive_decrypt_and_verify_HMAC(){
+    unsigned char* data;
+    generic_message rcvd_pkt;
+    uint32_t length_rec;
+    
+    //Receive the serialized data
+    if(!receive_message(data, length_rec)){
+        cerr << "ERR: some error in receiving MSG2 in upload" << endl;
+		free(data);
+		return nullptr;
+    }
+
+    if(!rcvd_pkt.deserialize_message(data)){
+        cerr<<"Error during deserialization of the data"<<endl;
+        return nullptr;
+    }
+
+    uint32_t MAC_len; 
+    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    unsigned char* HMAC;
+    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
+    memcpy(MACStr + 16,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
+    //Free
+    free(MACStr);
+
+    //HMAC Verification
+    if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
+        cout<<"HMAC cant be verified, try again"<<endl;
+        return nullptr;
+    }
+
+    unsigned char* plaintxt;
+    int ptlen;
+
+    //The IV get a free every time it gets generated again and at the end of execution during a class destruction
+    this->iv = rcvd_pkt.iv;
+
+    //Decrypt the ciphertext and obtain the plaintext
+    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
+        cout<<"Error during encryption"<<endl;
+        return nullptr;
+    }
+
+    free(HMAC);
+    free(rcvd_pkt.HMAC);
+    return plaintxt;
+}
+
+/**
+ * @brief Encrypt the plaintext and fill a generic packet to send through the socket
+ * 
+ * @param buffer : plaintext to encrypt
+ * @return true : the crypted msg has been sent successfully
+ * @return false : error during packet preparation or during the send
+ */
+bool Client::encrypt_generate_HMAC_and_send(string buffer){
+	// Generic Packet
+	generic_message pkt;
+
+	unsigned char* ciphertext;
+    int cipherlen;
+	// Encryption
+    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), ciphertext, cipherlen, true)!=0){
+        cout<<"Error during encryption"<<endl;
+        return false;
+    }
+
+	// Get the HMAC
+    uint32_t MAC_len; 
+    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    unsigned char* HMAC;
+    memcpy(MACStr,this->iv, IV_LENGTH);
+    memcpy(MACStr + 16,ciphertext,cipherlen);
+
+	//Initialization of the data to serialize
+    pkt.ciphertext = (const char*)ciphertext;
+    pkt.cipher_len = cipherlen;
+    pkt.iv = this->iv;
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
+    pkt.HMAC = HMAC;
+
+    unsigned char* data;
+    int data_length;
+
+    data = (unsigned char*)pkt.serialize_message(data_length);
+
+    //Send the first message
+    if(!send_message((void *)data, data_length)){
+        cout<<"Error during packet #1 forwarding"<<endl;
+        free(MACStr);
+        free(ciphertext);
+		free(pkt.HMAC);
+        return false;
+    }
+    free(MACStr);
+    free(ciphertext);
+    free(pkt.HMAC);
+	return true;
+}
+
 
 // check if password is ok and extract the private key 
 bool Client::extract_private_key(string _username, string password){
@@ -459,69 +569,207 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
     return 0;
 }
 
-// encrypt using cbc_encrypt but for pieces of file
-int Client::send_encrypted_file (string filename, unsigned char* iv, int iv_len, uint32_t& counter){
+/**
+ * Function that send the specified file through chunks of specified max size
+ * 
+ * @param filename : name of the file to send
+ * @param counter : current counter number
+ * @return int : result of the operation
+ */
+int Client::send_encrypted_file (string filename, uint32_t& counter){
     unsigned char* buffer;
-
-    // check filename on whitelist
-    if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
-    {
-        std::cerr << "ERR: filename check on whitelist fails" << endl;
-        return -1;
-    }
-
-    FILE* file = fopen(filename.c_str(), "rb"); 
-
+    // build a string that cointain the path of the file
+    string path = FILE_PATH + this->username + "/Upload/" + filename;
+    //open the file
+    FILE* file = fopen(path.c_str(), "rb"); 
+    // If !file the file cant be open or is not present inside the dir
     if (!file){
         return false;
     }
+    struct stat buf;
+    if (stat(path.c_str(),&buf)!=0){ //stat failed
+        cout<<"Failed stat function: File doesn't exists in the Upload dir"<<endl;
+        return 0;
+    }
 
+    //Calculate the number of chunks to send
+    size_t num_chunk_to_send = ceil((float)buf.st_size/FILE_FRAGMENTS_SIZE);
+    if(DEBUG){
+        cout << "Number of chunks: " << num_chunk_to_send << endl << endl;
+    }
+
+    buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
+    if(!buffer){            
+        cerr << "ERR: cannot allocate a buffer for the file fragment" << endl;
+        return -1;
+    }
+    memset(buffer,0,FILE_FRAGMENTS_SIZE);
     int ret;
-
-    // read while eof
-    while ( !feof(file) ){
-        buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
-
-        if (!buffer) {
-            std::cerr << "ERR: cannot allocate a buffer for the file fragment" << endl;
-            return -1;
-        }
+    //Start to send the chunks
+    for(size_t i = 0; i < num_chunk_to_send; ++i){
 
         // read bytes from file, the pointer is automatically increased
         ret = fread(buffer, 1, FILE_FRAGMENTS_SIZE, file);
-
         if ( ferror(file) != 0 ){
             std::cerr << "ERR: file reading error occured" << endl;
             return -1;
         }
-
-        unsigned char* ct;
-        int len_ct;
-
-        /*file_upload pkt;
+        //Declare a new packet & init its fields
+        file_upload pkt;
         pkt.code = FILE_UPLOAD;
-        pkt.msg = buffer;
-        pkt.counter = counter;*/
+        pkt.counter = counter;
+        pkt.msg_len = ret;
+        pkt.msg = (unsigned char*)buffer;
 
-        uint32_t cipherlen = strlen((char*)ct);
+        unsigned char* ciphertext;
+        int cipherlen;
 
-        //buffer = pkt.serialize_message();
-
-        cbc_encrypt_fragment(buffer, ret, ct, len_ct, false);
-
-        if(!send_message((void*)ct, cipherlen)){
-            cout<<"Error: send of a fragment failed"<<endl;
+        string to_encrypt = to_string(pkt.code) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.msg_len) + "$" + reinterpret_cast<char*>(pkt.msg);
+        if(cbc_encrypt_fragment((unsigned char*)to_encrypt.c_str(), strlen(to_encrypt.c_str()) , ciphertext, cipherlen, true) != 0){
+            cerr<<"Failed encryption during the file send"<<endl;
             return -1;
-        }   
+        }
 
-        //HMAC SEND TODO
+        // Get the HMAC
+        uint32_t MAC_len; 
+        unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+        unsigned char* HMAC;
+        memcpy(MACStr,iv, IV_LENGTH);
+        memcpy(MACStr + 16,ciphertext,cipherlen);
 
+        pkt.ciphertext = (const char*)ciphertext;
+        pkt.cipher_len = cipherlen;
+        generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
+        pkt.HMAC = HMAC;
+        pkt.iv = this->iv;
+
+        //Initialization of the data to serialize
+        unsigned char* data;
+        int data_length;
+
+        data = (unsigned char*)pkt.serialize_message(data_length);
+
+        //Send the first message
+        if(!send_message((void *)data, data_length)){
+            cout<<"Error during packet #1 forwarding"<<endl;
+            free(MACStr);
+            free(ciphertext);
+            return -1;
+        }
+
+
+        free(MACStr);
+        free(ciphertext);
         counter++;
-        free(ct);
-        free(buffer);
+        memset(buffer,0,FILE_FRAGMENTS_SIZE);
     }
 
+    free(buffer);
     return 0;
+}
+
+/**
+ * @brief Manage the file upload
+ * 
+ * @param size size of the uploaded file
+ * @param filename name of the uploaded file
+ * @return true : receive successful
+ * @return false : receive failed
+ */
+bool Client::encrypted_file_receive(uint32_t size, string filename, uint32_t& counter){
+    string path = FILE_PATH + this->username + "/Downlaod/" + filename;
+    //number of file chunk expected
+	unsigned int num_chunks = ceil((float) size/FILE_FRAGMENTS_SIZE);
+    if(DEBUG)
+	    cout << "Number of chunks: " << num_chunks << endl << endl;
+
+	//opening file on disk
+	ofstream file(path, ios::out|ios::binary);
+	if(!file.is_open()){
+		cerr << "error opening the file\n";
+	}
+    //Prepare the buffer
+    unsigned char* buffer;
+    buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
+    if(!buffer){            
+        cerr << "ERR: cannot allocate a buffer for the file fragment" << endl;
+        return false;
+    }
+    memset(buffer,0,FILE_FRAGMENTS_SIZE);
+    unsigned char* data;
+	for(uint32_t i = 0; i < num_chunks; ++i){
+        //Receive the message
+        uint32_t length_rec;
+        if(!receive_message(data, length_rec)){
+            cerr << "ERR: during the receive of fragment n°: "<< i << endl;
+            free(data);
+            return -2;
+        }
+        file_download pkt;
+        if(!pkt.deserialize_message(data)){
+            cerr<<"Error during deserialization of packet n°: "<< i <<endl;
+            return -2;
+        }
+
+        uint32_t MAC_len; 
+        unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + pkt.cipher_len);
+        unsigned char* HMAC;
+
+        MACStr = (unsigned char*)malloc(IV_LENGTH + pkt.cipher_len);
+        memcpy(MACStr,pkt.iv, IV_LENGTH);
+        memcpy(MACStr + 16,(void*)pkt.ciphertext.c_str(),pkt.cipher_len);
+
+        //Generate the HMAC on the receiving side iv||ciphertext
+        generate_HMAC(MACStr,IV_LENGTH + pkt.cipher_len, HMAC,MAC_len);
+        //Free
+        free(MACStr);
+
+        //HMAC Verification
+        if(!verify_SHA256_MAC(HMAC,pkt.HMAC)){
+            cout<<"HMAC cant be verified, try again"<<endl;
+            return -2;
+        }
+
+        unsigned char* plaintxt;
+        int ptlen;
+        this->iv = pkt.iv;
+
+        //Decrypt the ciphertext and obtain the plaintext
+        if(cbc_decrypt_fragment((unsigned char* )pkt.ciphertext.c_str(),pkt.cipher_len,plaintxt,ptlen)!=0){
+            cout<<"Error during encryption"<<endl;
+            return -2;
+        }
+
+        //Parsing and pkt parameters setting, it also free 'plaintxt'
+        if(!pkt.deserialize_plaintext(plaintxt)){
+            cerr<<"Received wrong message type!"<<endl;
+            return -2;
+        }
+
+        // Check for a replay attack
+        if(counter!= pkt.counter){
+            cerr<<"Wrong counter value, received "<<pkt.counter<<" instead of "<<counter<<endl;
+            return -2;
+        }
+
+        cout<<"HMAC verified, counter with the right value and ciphertext deciphered correctly at iteration: "<<i<<endl;
+
+        //copying chunk on disk
+		file.seekp(i*FILE_FRAGMENTS_SIZE, ios::beg);
+		int remaining = size - i*FILE_FRAGMENTS_SIZE;
+		size_t byte_to_write = min(FILE_FRAGMENTS_SIZE, remaining);
+		file.write((const char*)pkt.msg, byte_to_write);
+
+
+        memset(buffer,0,FILE_FRAGMENTS_SIZE);
+        free(data);
+        free(pkt.iv);
+        free(pkt.HMAC);
+        free(HMAC);
+        counter++;
+    }
+
+    return true;
 }
 
 // sent packet [username | sts_key_param | hmac_key_param]
@@ -531,7 +779,7 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
 	int len;
 	
     // initialize to 0 the pack
-    memset(&pkt, 0, sizeof(pkt));
+    //memset(&pkt, 0, sizeof(pkt));
 	
 	// lens will be automatically set after sending
     pkt.code = LOGIN_BOOTSTRAP;
@@ -910,9 +1158,12 @@ bool Client::init_session(){
     return true;
 }
 
-/**Check the existance of the file inside the upload directory
- *  @filename : file of which we have to check the existance
- *  @username : needed to find the current user directory 
+/**
+ * Check the existance of the file inside the upload directory
+ * 
+ * @param filename : file name to check
+ * @param username : user that what to upload
+ * @return uint32_t : 0 -> wrong >0 -> correct result
  */
 uint32_t Client::file_exists(string filename, string username){
     string path = FILE_PATH + username + "/Upload/" + filename;
@@ -943,7 +1194,9 @@ uint32_t Client::file_exists_to_download(string filename, string username){
     return -1;
 }
 
-/** Help function that shows all the available commands to the user
+/**
+ * Help function that shows all the available commands to the user
+ * 
  */
 void Client::help(){
     cout<<"===================================== HELP ================================================="<<endl<<endl;
@@ -988,8 +1241,8 @@ int Client::upload(string username){
         return -1;
     }
 
-    /******************************************************/
-    /******* Phase 1: send iv + encrypt_msg + HMAC ********/
+    /****************************************************************************************/
+    /******* Phase 1: send filename, file length and other initialization parameters ********/
 
     //Phase needed to check if on the server is present another file with the same name of the one that the user want to upload
     //The server will send an ACK or NACK depending on its disponibility to recive the file
@@ -1003,95 +1256,35 @@ int Client::upload(string username){
     pkt.counter = counter;
     pkt.size = size_file;
 
-    unsigned char* iv = (unsigned char*)malloc(IV_LENGTH);
-    unsigned char* ciphertext;
-    int cipherlen;
-
     // Prepare the plaintext to encrypt
-    string buffer =  to_string(pkt.filename_len) + " " + filename + " " + to_string(pkt.response) + " " + to_string(pkt.counter) + " " + to_string(pkt.size);
+    string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size);
 
-    // Encryption
-    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), ciphertext, cipherlen, true)!=0){
-        cout<<"Error during encryption"<<endl;
+    if(!encrypt_generate_HMAC_and_send(buffer)){
+        cerr<<"Error during encryption and send of MSG#1 of Upload"<<endl;
         return -1;
     }
 
-    // Get the HMAC
-    uint32_t MAC_len; 
-    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
-    unsigned char* HMAC;
-    memcpy(MACStr,iv, IV_LENGTH);
-    memcpy(MACStr + 16,ciphertext,cipherlen);
-
-
-    //Initialization of the data to serialize
-    pkt.ciphertext = (const char*)ciphertext;
-    pkt.cipher_len = cipherlen;
-    pkt.iv = iv;
-    //generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,); 
-    pkt.HMAC = HMAC;
-
-
-    unsigned char* data;
-    int data_length;
-
-    data = (unsigned char*)pkt.serialize_message(data_length);
-
-    //Send the first message
-    if(!send_message((void *)data, data_length)){
-        cout<<"Error during packet #1 forwarding"<<endl;
-        free(MACStr);
-        free(ciphertext);
-        return -1;
-    }
-    free(MACStr);
-    free(ciphertext);
     counter++;
     
     /***************************************************************************************/
     // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
 
-    uint32_t length_rec;
+    //Receive the message, check the HMAC validity and decrypt the ciphertext
+    unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
 
-    if(!receive_message(data, length_rec)){
-        cerr << "ERR: some error in receiving MSG2 in upload" << endl;
-		free(data);
-		return -2;
+    if(plaintxt == nullptr){
+        cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
+        return -2;
     }
 
+    // Expected packet type
     bootstrap_upload rcvd_pkt;
-    if(!rcvd_pkt.deserialize_message(data)){
-        cerr<<"Received the wrong packet!"<<endl;
+
+    //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
+    if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
         return -2;
     }
-
-    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
-    memcpy(MACStr,iv, IV_LENGTH);
-    memcpy(MACStr + 16,ciphertext,rcvd_pkt.cipher_len);
-
-    //Generate the HMAC on the receiving side iv||ciphertext    //Usa generate HMAC
-    //generate_HMAC()
-    //ge(MACStr,rcvd_pkt.cipher_len,HMAC,MAC_len,50000);
-    //Free
-    free(MACStr);
-
-    //HMAC Verification
-    if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
-        cout<<"HMAC cant be verified, try again"<<endl;
-        return -2;
-    }
-
-    unsigned char* plaintxt;
-    int ptlen;
-
-    //Decrypt the ciphertext and obtain the plaintext
-    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
-        cout<<"Error during encryption"<<endl;
-        return -2;
-    }
-
-    //Parsing and pkt parameters setting, it also free 'plaintxt'
-    rcvd_pkt.deserialize_plaintext(plaintxt);
 
     if(DEBUG){
         cout<<"You received the following cripted message: "<<endl;
@@ -1107,17 +1300,20 @@ int Client::upload(string username){
         cerr<<"There is already a file with the same name on the server! Rename or delete it before uploading a new one"<<endl;
         return -2;
     }
-    free(ciphertext);
+    
+    counter++;
     // If the server response is '1' the server is now ready to obtain the file 
 
     /***************************************************************************************/
     // *************************** PHASE 2 SEND THE FILE: MSG 3 ************************** //
 
-    /* TODO ???? */
-    // REMEMBER: HANDLE THE COUNTER++
+    if(!send_encrypted_file(filename, counter)){
+        cerr<<"error during the upload of the file"<<endl;
+        return -3;
+    }
 
     /***************************************************************************************/
-    // ******************************* SEND EOF NOTIF: MSG 5 ***************************** //
+    // ******************************* SEND EOF NOTIF: MSG 4 ***************************** //
 
     end_upload pkt_end_1;
     pkt_end_1.code = FILE_EOF_HS;
@@ -1125,78 +1321,31 @@ int Client::upload(string username){
     pkt_end_1.counter = counter;
 
     // Prepare the plaintext to encrypt
-    buffer =  pkt_end_1.response + " " + to_string(pkt_end_1.counter);
+    buffer =  to_string(pkt_end_1.code) + "$" + pkt_end_1.response + "$" + to_string(pkt_end_1.counter);
 
-    // Encryption
-    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), ciphertext, cipherlen, false)!=0){
-        cout<<"Error during encryption of EOF Handshaking"<<endl;
-        return -5;
+    if(!encrypt_generate_HMAC_and_send(buffer)){
+        cerr<<"Error during encryption and send of MSG#4 of Upload"<<endl;
+        return -4;
     }
-
-    // Get the HMAC
-    MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
-    memcpy(MACStr,iv, IV_LENGTH);
-    memcpy(MACStr + 16,ciphertext,cipherlen);
-
-
-    //Initialization of the data to serialize
-    pkt_end_1.ciphertext = (const char*)ciphertext;
-    pkt_end_1.cipher_len = cipherlen;
-    //generate_SHA256_MAC(MACStr,pkt.cipher_len,HMAC,MAC_len,50000); 
-    pkt_end_1.HMAC = HMAC;
-
-    data = (unsigned char*)pkt_end_1.serialize_message(data_length);
-
-    //Send the EOF message
-    if(!send_message((void *)data, data_length)){
-        cout<<"Error during packet #5 forwarding"<<endl;
-        free(MACStr);
-        free(ciphertext);
-        return -1;
-    }
-
-    free(MACStr);
-    free(ciphertext);
     counter++;
 
     /***************************************************************************************/
-    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 6 ******************** //
+    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 5 ******************** //
 
-    if(!receive_message(data, length_rec)){
-        cerr << "ERR: some error in receiving MSG2 in upload" << endl;
-		free(data);
-		return -6;
+    plaintxt = receive_decrypt_and_verify_HMAC();
+
+    if(plaintxt == nullptr){
+        cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
+        return -5;
     }
 
     end_upload pkt_end_2;
-    if(!pkt_end_2.deserialize_message(data)){
-        cerr<<"Received the wrong packet!"<<endl;
-        return -6;
+
+    //Parsing and pkt parameters setting, it also FREE(plaintxt)
+    if(!pkt_end_2.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
+        return -5;
     }
-
-    MACStr = (unsigned char*)malloc(IV_LENGTH + pkt_end_2.cipher_len);
-    memcpy(MACStr,iv, IV_LENGTH);
-    memcpy(MACStr + 16,ciphertext,pkt_end_2.cipher_len);
-
-    //Generate the HMAC on the receiving side iv||ciphertext
-    //generate_SHA256_MAC(MACStr,rcvd_pkt.cipher_len,HMAC,MAC_len,50000);
-    //Free
-    free(MACStr);
-
-    //HMAC Verification
-    if(!verify_SHA256_MAC(HMAC,pkt_end_2.HMAC)){
-        cerr<<"Error: HMAC cant be verified"<<endl;
-        return -6;
-    }
-
-    //Decrypt the ciphertext and obtain the plaintext
-    if(cbc_decrypt_fragment((unsigned char* )pkt_end_2.ciphertext.c_str(),pkt_end_2.cipher_len, plaintxt,ptlen)!=0){
-        cerr<<"Error during encryptionof packet #6"<<endl;
-        return -6;
-    }
-
-    //Parsing and pkt parameters setting, it also free 'plaintxt'
-    pkt_end_2.deserialize_plaintext(plaintxt);
 
     if(DEBUG){
         cout<<"You received the following cripted message: "<<endl;
@@ -1206,24 +1355,26 @@ int Client::upload(string username){
     // Check on rcvd packets values
     if( pkt_end_2.counter != counter ){
         cerr<<"Wrong counter value, we received: "<<pkt_end_2.counter<<" instead of: "<<counter<<endl;
-        return -6;
+        return -5;
     }
+
     // Check the response of the server
     if(!strcmp(pkt_end_2.response.c_str(),"OK")){
         cerr<<"There was a problem during the finalization of the upload!"<<endl;
-        return -6;
+        return -5;
     }
 
     cout<<"***************************************************************************************"<<endl;
     cout<<"************************ THE UPLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
 
-    free(iv);
     return 0;
 }
 
-/**Function that manage the download command, takes as a parameter the name of the file that the user want to download.
- *  @filename : name of the file that the user wants to download 
- *  @username : the username used to log in
+/**
+ * Function that manage the downlaod command, takes as a parameter the name of the file that the user want to download.
+ * 
+ * @param username : username of the user that want to download the file
+ * @return int : 0 => success, !=0 => failure
  */
 int Client::download(string username){
     uint32_t counter = 0;
@@ -1237,54 +1388,142 @@ int Client::download(string username){
 
     if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
         std::cerr << "ERR: command check on whitelist fails"<<endl;
+        std::cerr << "*************************************"<<endl<<endl;
         return -1;
     }
 
     if(file_exists_to_download(filename, username)!=0){
         std::cerr << "ERR: file already inside download dir"<<endl;
+        std::cerr << "*************************************"<<endl<<endl;
         return -1;
     }
+
+    /****************************************************************************************/
+    /************** Phase 1: send filename and other initialization parameters **************/
+
     //Check if on server side there is a file with the same name
     //Packet initialization
     bootstrap_download pkt;
     pkt.code = BOOTSTRAP_DOWNLOAD;
+    pkt.filename_len = strlen(filename.c_str());
     pkt.filename = filename;
     pkt.counter = counter;
+    pkt.size = 0;
 
-    //Data structure serialization
-    int pkt_len;
-    unsigned char* buffer = (unsigned char *)pkt.serialize_message(pkt_len);
+    // Prepare the plaintext to encrypt
+    string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size);
 
-
-    unsigned char* iv = this->iv; 
-    unsigned char* ciphertext;
-    int cipherlen;
-
-    //Message encryption
-    if(cbc_encrypt_fragment(buffer, pkt_len, ciphertext, cipherlen, true)!=0){
-        cout<<"Error during encryption"<<endl;
+    if(!encrypt_generate_HMAC_and_send(buffer)){
+        cerr<<"Error during encryption and send of MSG#1 of Upload"<<endl;
         return -1;
     }
-    //buffer is no longer needed
-    free(buffer);
 
-    //Send the iv
-    send_message((void *)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+    counter++;
 
-    //send the cyphertext
-    send_message((void*)ciphertext, cipherlen);
+    /****************************************************************************************/
+
+    //Receive the message, check the HMAC validity and decrypt the ciphertext
+    unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
+
+    if(plaintxt == nullptr){
+        cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
+        cerr << "*************************************"<<endl<<endl;
+        return -2;
+    }
+
+    // Expected packet type
+    bootstrap_download rcvd_pkt;
+
+    //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
+    if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
+        cerr << "*************************************"<<endl<<endl;
+        return -2;
+    }
+
+    if(DEBUG){
+        cout<<"You received the following cripted message: "<<endl;
+        cout<<"Code: "<<rcvd_pkt.code<<";\n filename_len:"<<rcvd_pkt.filename_len<<";\n filename:"<<rcvd_pkt.filename<<";\n counter:"<<rcvd_pkt.counter<<";\n size: "<<rcvd_pkt.size<<endl;
+    }
+    // Check on rcvd packets values
+    if( rcvd_pkt.counter != counter ){
+        cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
+        cerr << "*************************************"<<endl<<endl;
+        return -2;
+    }
+    // Check the response of the server
+    if( rcvd_pkt.size == 0){
+        cerr<<"File not found on the server"<<endl;
+        cerr << "*************************************"<<endl<<endl;
+        return -2;
+    }
     
-    //ciphertext no longer needed
-    free(ciphertext);
+    counter++;
+    // If the size is != 0 the server is now ready to send the file 
 
-    //Generation of the HMAC
+    /**************************************************************************************************/
+    // ******************************* PHASE 2 RECEIVE THE FILE: MSG 3 ****************************** //
 
-    // ??
+    if(!encrypted_file_receive(rcvd_pkt.size, filename, counter)){
+        cerr<<"Phase 2 failed: error during file upload"<<endl;
+        return -3;
+    }
 
-    //send_message((void*)hmac, /*hmacsize*/)
+    /**************************************************************************************************/
+    // ********************************* PHASE 3 FILE EOF HS : MSG 4 ******************************** //
 
-    //ret = receive_message()
-    free(iv);
+    end_download pkt_end_1;
+
+    plaintxt = receive_decrypt_and_verify_HMAC();
+
+    if(plaintxt == nullptr){
+        cerr<<"Error during receive_decrypt_and_verify_HMAC for MSG#4"<<endl;
+        return -4;
+    }
+
+    //Parsing and pkt parameters setting, it also free 'plaintxt'
+    if(!pkt_end_1.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
+        return -4;
+    }
+
+    if(DEBUG){
+        cout<<"You received the following cripted message: "<<endl;
+        cout<<"Code: "<<pkt_end_1.code<<";\n filename:"<<pkt_end_1.response<<";\n counter:"<<pkt_end_1.counter<<endl;
+    }
+
+    // Check on rcvd packets values
+    if( pkt_end_1.counter != counter ){
+        cerr<<"Wrong counter value, we received: "<<pkt_end_1.counter<<" instead of: "<<counter<<endl;
+        return -4;
+    }
+    // Check the response of the server
+    if(!strcmp(pkt_end_1.response.c_str(),"END")){
+        cerr<<"There was a problem during the finalization of the upload!"<<endl;
+        return -4;
+    }
+
+    counter++;
+
+    /*******************************************************************************/
+    /**************************** LAST MESSAGE *************************************/
+
+    end_download pkt_end_2;
+    pkt_end_2.code = FILE_DL_HS;
+    pkt_end_2.response = "OK";
+    pkt_end_2.counter = counter;
+
+    // Prepare the plaintext to encrypt
+    buffer =  to_string(pkt_end_2.code) + "$" + pkt_end_2.response + "$" + to_string(pkt_end_2.counter);
+
+    if(!encrypt_generate_HMAC_and_send(buffer)){
+        cerr<<"Error during encrypt_generate_HMAC_and_send of MSG#5"<<endl;
+        return -5;
+    }
+
+    cout<<"*****************************************************************************************"<<endl;
+    cout<<"************************ THE DOWNLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl<<endl;
+
     return 0;
 }
 
@@ -1359,7 +1598,7 @@ X509_CRL* Client::get_crl() {
 	return crl;
 }
 
-
+ 
 
 // RUN
 int Client::run(){

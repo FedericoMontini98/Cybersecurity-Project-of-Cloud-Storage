@@ -16,6 +16,15 @@ Worker::~Worker(){
     free(iv);
 }
 
+// generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
+int Worker::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen){
+	
+	// hmac_util.cpp
+	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, FILE_FRAGMENTS_SIZE);
+
+}
+
+
 // to test serialization
 /*void debug_serialize_pkt(uint8_t* buffer){
     login_bootstrap_pkt pkt;
@@ -109,6 +118,115 @@ int Worker::receive_message(unsigned char*& recv_buffer, uint32_t& len){ //EDIT:
     }
 
     return 0;
+}
+
+/**
+ * @brief manage the receive and various general checks on the received packet
+ *        MANAGE THE plaintxt destruction!
+ * @return unsigned* the plaintext to deserialize inside the correct packet type
+ */
+unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
+    unsigned char* data;
+    generic_message rcvd_pkt;
+    uint32_t length_rec;
+    
+    //Receive the serialized data
+    if(!receive_message(data, length_rec)){
+        cerr << "ERR: some error in receiving MSG2 in upload" << endl;
+		free(data);
+		return nullptr;
+    }
+
+    if(!rcvd_pkt.deserialize_message(data)){
+        cerr<<"Error during deserialization of the data"<<endl;
+        return nullptr;
+    }
+
+    uint32_t MAC_len; 
+    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    unsigned char* HMAC;
+    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
+    memcpy(MACStr + 16,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
+    //Free
+    free(MACStr);
+
+    //HMAC Verification
+    if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
+        cout<<"HMAC cant be verified, try again"<<endl;
+        return nullptr;
+    }
+
+    unsigned char* plaintxt;
+    int ptlen;
+
+    //The IV get a free every time it gets generated again and at the end of execution during a class destruction
+    this->iv = rcvd_pkt.iv;
+
+    //Decrypt the ciphertext and obtain the plaintext
+    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
+        cout<<"Error during encryption"<<endl;
+        return nullptr;
+    }
+
+    free(HMAC);
+    free(rcvd_pkt.HMAC);
+    return plaintxt;
+}
+
+/**
+ * @brief Encrypt the plaintext and fill a generic packet to send through the socket
+ * 
+ * @param buffer : plaintext to encrypt
+ * @return true : the crypted msg has been sent successfully
+ * @return false : error during packet preparation or during the send
+ */
+bool Worker::encrypt_generate_HMAC_and_send(string buffer){
+	// Generic Packet
+	generic_message pkt;
+
+	unsigned char* ciphertext;
+    int cipherlen;
+	// Encryption
+    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), ciphertext, cipherlen, true)!=0){
+        cout<<"Error during encryption"<<endl;
+        return false;
+    }
+
+	// Get the HMAC
+    uint32_t MAC_len; 
+    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    unsigned char* HMAC;
+    memcpy(MACStr,this->iv, IV_LENGTH);
+    memcpy(MACStr + 16,ciphertext,cipherlen);
+
+	//Initialization of the data to serialize
+    pkt.ciphertext = (const char*)ciphertext;
+    pkt.cipher_len = cipherlen;
+    pkt.iv = this->iv;
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
+    pkt.HMAC = HMAC;
+
+    unsigned char* data;
+    int data_length;
+
+    data = (unsigned char*)pkt.serialize_message(data_length);
+
+    //Send the first message
+    if(!send_message((void *)data, data_length)){
+        cout<<"Error during packet #1 forwarding"<<endl;
+        free(MACStr);
+        free(ciphertext);
+		free(pkt.HMAC);
+        return false;
+    }
+    free(MACStr);
+    free(ciphertext);
+    free(pkt.HMAC);
+	return true;
 }
 
 int Worker::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, bool _generate_iv){
