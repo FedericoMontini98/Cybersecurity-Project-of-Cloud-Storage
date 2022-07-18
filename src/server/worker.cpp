@@ -487,6 +487,8 @@ bool Worker::check_username(string username){
     vector<string> users;
     string str;
     while (getline(file, str)) {
+		int len = strlen(str.c_str()) - 1 ;
+        str = str.substr(0,len);
         users.push_back(str);
     }
 
