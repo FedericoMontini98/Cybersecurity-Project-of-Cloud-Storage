@@ -493,7 +493,7 @@ bool Worker::check_username(string username){
     }
 
     for (string i: users){
-        if(!username.compare(i)){
+        if(username.compare(i) != 0){
             return true;
         }
     }
@@ -574,10 +574,6 @@ bool Worker::init_session(){
 	EVP_PKEY* client_pubk;
 	X509* ca_cert;
 	X509_CRL* ca_crl;
-	
-	memset(&bootstrap_pkt, 0, sizeof(bootstrap_pkt));
-	memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
-	memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
 	
 	// receive buffer
 	unsigned char* receive_buffer;
@@ -703,6 +699,7 @@ bool Worker::init_session(){
 			
 			// decrypt the encrypted part using the derived symmetric key and the received iv
 			free(iv);
+			iv = nullptr;
 			iv = (unsigned char*) malloc(iv_size);
 			
 			if(!iv){
@@ -803,6 +800,8 @@ bool Worker::init_session(){
 			if (error_code > 6) {X509_CRL_free(ca_crl);}
 			if (error_code > 8) {EVP_PKEY_free(client_pubk);}
 			if (error_code > 9) { free(signed_text); }
+
+			cout << "some error occurred in receiveing client_auth_pkt" << endl;
 			
 			// reset structures
 			memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));

@@ -777,9 +777,7 @@ bool Client::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
 int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
 	unsigned char* send_buffer;
 	int len;
-	
-    // initialize to 0 the pack
-    //memset(&pkt, 0, sizeof(pkt));
+    unsigned char* to_copy;
 	
 	// lens will be automatically set after sending
     pkt.code = LOGIN_BOOTSTRAP;
@@ -800,17 +798,28 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
         return -1;
     }
 
-	send_buffer = (unsigned char*) pkt.serialize_message(len);
-	
-	if (send_buffer == nullptr){
+	to_copy = (unsigned char*) pkt.serialize_message(len);
+
+    if (to_copy == nullptr){
 		cerr << "ERR: failed to serialize login bootstrap packet" << endl;
 		return -1;
 	}
+
+    send_buffer = (unsigned char*) malloc(len);
+
+    if (!send_buffer){
+        cerr << "malloc failed on send_buffer" << endl;
+        return -1;
+    }
+	
+	memcpy(send_buffer, to_copy, len);
 	
     if (!send_message(send_buffer, len)){
         cerr << "ERR: failed to send login bootstrap packet" << endl;
         return -1;
     }
+
+    secure_free(send_buffer, len);
 	
     return 0;
     
@@ -825,6 +834,7 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 	unsigned char* signature;
 	unsigned char* ciphertext;
 	unsigned char* final_pkt;
+    unsigned char* to_copy;
 	int cipherlen;
 	int ret;
 	
@@ -839,12 +849,21 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 	}
 	
 	// serialize the part to encrypt
-	part_to_encrypt = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
-	
-	if (part_to_encrypt == nullptr){
+	to_copy = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
+
+    if (to_copy == nullptr){
 		cerr << "error in serialize part to encrypt" << endl;
 		return -1;
 	}
+
+    part_to_encrypt = (unsigned char*) malloc(pte_len);
+
+    if(part_to_encrypt == nullptr){
+        cerr << "failed malloc on part_to_encrypt" << endl;
+        return -1;
+    }
+
+    memcpy(part_to_encrypt, to_copy, pte_len);
 	
 	// sign it
 	signature = sign_message(private_key, part_to_encrypt, pte_len, signature_len);
@@ -865,7 +884,7 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 	pkt.encrypted_signing_len = cipherlen;
 	
 	// final serialization, this time there will be no dh keys in clear
-	unsigned char* to_copy = (unsigned char*) pkt.serialize_message_no_clear_keys(final_pkt_len);
+	to_copy = (unsigned char*) pkt.serialize_message_no_clear_keys(final_pkt_len);
 	final_pkt = (unsigned char*) malloc(final_pkt_len);
 	
 	if (!final_pkt){
@@ -881,10 +900,11 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 		return -1;
 	}
 	
+    free(part_to_encrypt);
 	free(ciphertext);
 	free(iv);
 	iv = nullptr;
-	free(final_pkt);
+	free(final_pkt); 
 	
 	return 0;
 }
@@ -935,10 +955,6 @@ bool Client::init_session(){
 	EVP_PKEY* server_pubk;
 	X509* ca_cert;
 	X509_CRL* ca_crl;
-	
-	memset(&bootstrap_pkt, 0, sizeof(bootstrap_pkt));
-	memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
-	memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
 	
 	// receive buffer
 	unsigned char* receive_buffer;
@@ -1117,10 +1133,8 @@ bool Client::init_session(){
 			if (error_code > 10) { X509_CRL_free(ca_crl); }
 			if (error_code > 12) { EVP_PKEY_free(server_pubk); }
 			if (error_code > 13) { free(signed_text); }
-			
-			// reset structures
-			memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
-			memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
+
+            cout << "some error occurred in receiveing server_auth_pkt" << endl;
 		}
 		
 		break;
@@ -1150,7 +1164,31 @@ bool Client::init_session(){
 	// free all
 	bootstrap_pkt.free_pointers();
 	server_auth_pkt.free_pointers();
-	client_auth_pkt.free_pointers();
+    client_auth_pkt.free_pointers();
+
+    /*if (server_auth_pkt.serialized_pkt != nullptr){
+        secure_free(server_auth_pkt.serialized_pkt, server_auth_pkt.serialized_pkt_len);
+    }
+
+    cout << "a" << endl;
+
+    if (client_auth_pkt.serialized_pkt != nullptr){
+        secure_free(client_auth_pkt.serialized_pkt, client_auth_pkt.serialized_pkt_len);
+    }
+
+    cout << "b" << endl;
+
+    if(server_auth_pkt.serialized_pte != nullptr){
+        secure_free(server_auth_pkt.serialized_pte, server_auth_pkt.serialized_pte_len);
+    }
+
+    cout << "c" << endl;
+
+    if(client_auth_pkt.serialized_pte != nullptr){
+        secure_free(client_auth_pkt.serialized_pte, client_auth_pkt.serialized_pte_len);
+    }
+
+    cout << "d" << endl;*/
 	
 	// client consider the authentication as done, if server close the connection it means
 	// that an error occurs on signature verification

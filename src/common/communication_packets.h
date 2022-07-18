@@ -130,12 +130,17 @@ struct login_bootstrap_pkt
 	
     // function that return a void* serialized_pkt that contains the serialized packet
     // ready to be sent on the network
-    void *serialize_message(int &len)
+    void* serialize_message(int &len)
     {
         int pointer_counter = 0;              // pointer_counter to fields
 											  
 		void *key_buffer_symmetric = nullptr; // pointer to the buffer with the serialized key for the sts parameter
 		void *key_buffer_hmac = nullptr; // pointer to the buffer with the serialized key for the hmac parameter
+
+        if (serialized_pkt != nullptr){
+            secure_free(serialized_pkt, serialized_pkt_len);
+            serialized_pkt = nullptr;
+        }
 
         // get of the pointer to the serialized sts parameter buffer
         key_buffer_symmetric = serialize_evp_pkey(symmetric_key_param, symmetric_key_param_len);
@@ -338,6 +343,11 @@ struct login_authentication_pkt {
 	// serialize the part to be signed and then encrypted, this function must be called before serialize_message
 	void* serialize_part_to_encrypt(int &len){
         int pointer_counter = 0; 
+
+        if (serialized_pte != nullptr){
+            secure_free(serialized_pte, serialized_pte_len);
+            serialized_pte = nullptr;
+        }
 		
 		// evp serializations
 		void* key_buffer_symmetric_server = serialize_evp_pkey(symmetric_key_param_server, symmetric_key_param_len_server);
@@ -351,6 +361,8 @@ struct login_authentication_pkt {
 		hmac_key_param_len_client;
 		
 		serialized_pte_len = len;
+
+        cout << "serialized_pte_len: "<<serialized_pte_len << endl;
 
         // buffer allocation for the serialized packet
         serialized_pte = (uint8_t*) malloc(len);
@@ -407,6 +419,11 @@ struct login_authentication_pkt {
 		void* cert_buffer = nullptr; 
 		void* key_buffer_symmetric_server_clear = nullptr;
 		void* key_buffer_hmac_server_clear = nullptr; 
+
+        if (serialized_pkt != nullptr){
+            secure_free(serialized_pkt, serialized_pkt_len);
+            serialized_pkt = nullptr;
+        }
 		
 		if(encrypted_signing == nullptr || encrypted_signing_len == 0 || iv_cbc == nullptr || cert == nullptr){
 			
@@ -435,6 +452,8 @@ struct login_authentication_pkt {
 		+ sizeof(certified_encrypted_signing_len) + IV_LENGTH + cert_len + symmetric_key_param_server_clear_len + hmac_key_param_server_clear_len + encrypted_signing_len;
 		
 		serialized_pkt_len = len;
+
+        cout << "serialized_pkt_len: "<< serialized_pkt_len << endl;
 		
 		// buffer allocation for the serialized packet
         serialized_pkt = (uint8_t*) malloc(len);
@@ -483,6 +502,11 @@ struct login_authentication_pkt {
 	void* serialize_message_no_clear_keys(int& len){
 		int pointer_counter = 0;
 		void* cert_buffer;
+
+        if (serialized_pkt != nullptr){
+            secure_free(serialized_pkt, serialized_pkt_len);
+            serialized_pkt = nullptr;
+        }
 		
 		if(encrypted_signing == nullptr || encrypted_signing_len == 0 || iv_cbc == nullptr || cert == nullptr){
 			
@@ -500,6 +524,8 @@ struct login_authentication_pkt {
 		len = sizeof(certified_cert_len) + sizeof(certified_encrypted_signing_len) + IV_LENGTH + cert_len + encrypted_signing_len;
 		
 		serialized_pkt_len = len;
+
+        cout << "serialized_pkt_len: "<<serialized_pkt_len << endl;
 		
 		// buffer allocation for the serialized packet
         serialized_pkt = (uint8_t*) malloc(len);
@@ -531,43 +557,43 @@ struct login_authentication_pkt {
 	}
 	
 	// deserialize the message with the encrypted part, this function must be called before deserialize_encrypted_part
-    bool deserialize_message(uint8_t* serialized_pkt){
+    bool deserialize_message(uint8_t* serialized_pkt_received){
 		int pointer_counter = 0;
 
 		// cert_len, dh_symm_key_len, dh_hmac_key_len, encrypted_signing_len, iv_cbc, cert, 
 		// dh_symm_key, dh_hmac_key, encrypted_signing
 		
 		// copy cert_len
-		memcpy (&cert_len, serialized_pkt, sizeof(cert_len));
+		memcpy (&cert_len, serialized_pkt_received, sizeof(cert_len));
         cert_len = ntohl(cert_len);
         pointer_counter += sizeof(cert_len);
 		
 		// copy of dh keys in clear len
-		memcpy (&symmetric_key_param_server_clear_len, serialized_pkt + pointer_counter, sizeof(symmetric_key_param_server_clear_len));
+		memcpy (&symmetric_key_param_server_clear_len, serialized_pkt_received + pointer_counter, sizeof(symmetric_key_param_server_clear_len));
         symmetric_key_param_server_clear_len = ntohl(symmetric_key_param_server_clear_len);
         pointer_counter += sizeof(symmetric_key_param_server_clear_len);
 		
-		memcpy (&hmac_key_param_server_clear_len, serialized_pkt + pointer_counter, sizeof(hmac_key_param_server_clear_len));
+		memcpy (&hmac_key_param_server_clear_len, serialized_pkt_received + pointer_counter, sizeof(hmac_key_param_server_clear_len));
         hmac_key_param_server_clear_len = ntohl(hmac_key_param_server_clear_len);
         pointer_counter += sizeof(hmac_key_param_server_clear_len);
 		
 		// copy of encrypted_signing_len
-		memcpy (&encrypted_signing_len, serialized_pkt + pointer_counter, sizeof(encrypted_signing_len));
+		memcpy (&encrypted_signing_len, serialized_pkt_received + pointer_counter, sizeof(encrypted_signing_len));
         encrypted_signing_len = ntohl(encrypted_signing_len);
         pointer_counter += sizeof(encrypted_signing_len);
 		
 		// copy of iv_cbc
-		iv_cbc = serialized_pkt + pointer_counter;
+		iv_cbc = serialized_pkt_received + pointer_counter;
         pointer_counter += IV_LENGTH;
 		
 		// copy of certificate
-		cert = deserialize_certificate_X509 (serialized_pkt + pointer_counter, cert_len);
+		cert = deserialize_certificate_X509 (serialized_pkt_received + pointer_counter, cert_len);
 		pointer_counter += cert_len;
 		
 		// copy of dh keys
 		
 		// symmetric
-		symmetric_key_param_server_clear = deserialize_evp_pkey(serialized_pkt + pointer_counter, symmetric_key_param_server_clear_len);
+		symmetric_key_param_server_clear = deserialize_evp_pkey(serialized_pkt_received + pointer_counter, symmetric_key_param_server_clear_len);
 		pointer_counter += symmetric_key_param_server_clear_len;
 		
 		if (symmetric_key_param_server_clear == nullptr){
@@ -576,7 +602,7 @@ struct login_authentication_pkt {
 		}
 		
 		// hmac
-		hmac_key_param_server_clear = deserialize_evp_pkey(serialized_pkt + pointer_counter, hmac_key_param_server_clear_len);
+		hmac_key_param_server_clear = deserialize_evp_pkey(serialized_pkt_received + pointer_counter, hmac_key_param_server_clear_len);
 		pointer_counter += hmac_key_param_server_clear_len;
 		
 		if (hmac_key_param_server_clear == nullptr){
@@ -586,38 +612,44 @@ struct login_authentication_pkt {
 		
 		// point to encrypted part
 		encrypted_signing = (uint8_t*) malloc(encrypted_signing_len);
-		memcpy(encrypted_signing, serialized_pkt + pointer_counter, encrypted_signing_len);
+
+        if (!encrypted_signing){
+            cerr << "encrypted signing malloc failed" << endl;
+            return false;
+        }
+
+		memcpy(encrypted_signing, serialized_pkt_received + pointer_counter, encrypted_signing_len);
 		
 		return true;
     }
 	
 	// deserialize the message with the encrypted part not considering dh keys in clear
-    bool deserialize_message_no_clear_keys(uint8_t* serialized_pkt){
+    bool deserialize_message_no_clear_keys(uint8_t* serialized_pkt_received){
 		int pointer_counter = 0;
 
 		// cert_len, encrypted_signing_len, iv_cbc, cert, encrypted_signing
 		
 		// copy cert_len
-		memcpy (&cert_len, serialized_pkt, sizeof(cert_len));
+		memcpy (&cert_len, serialized_pkt_received, sizeof(cert_len));
         cert_len = ntohl(cert_len);
         pointer_counter += sizeof(cert_len);
 		
 		// copy of encrypted_signing_len
-		memcpy (&encrypted_signing_len, serialized_pkt + pointer_counter, sizeof(encrypted_signing_len));
+		memcpy (&encrypted_signing_len, serialized_pkt_received + pointer_counter, sizeof(encrypted_signing_len));
         encrypted_signing_len = ntohl(encrypted_signing_len);
         pointer_counter += sizeof(encrypted_signing_len);
 		
 		// copy of iv_cbc
-		iv_cbc = serialized_pkt + pointer_counter;
+		iv_cbc = serialized_pkt_received + pointer_counter;
         pointer_counter += IV_LENGTH;
 		
 		// copy of certificate
-		cert = deserialize_certificate_X509 (serialized_pkt + pointer_counter, cert_len);
+		cert = deserialize_certificate_X509 (serialized_pkt_received + pointer_counter, cert_len);
 		pointer_counter += cert_len;
 		
 		// point to encrypted part
 		encrypted_signing = (uint8_t*) malloc(encrypted_signing_len);
-		memcpy(encrypted_signing, serialized_pkt + pointer_counter, encrypted_signing_len);
+		memcpy(encrypted_signing, serialized_pkt_received + pointer_counter, encrypted_signing_len);
 		
 		return true;
     }
@@ -634,10 +666,13 @@ struct login_authentication_pkt {
 		if (hmac_key_param_client != nullptr)	       { EVP_PKEY_free(hmac_key_param_client);			 }
 		
 		// buffers
+        cout << "a" << endl;
+        cout << serialized_pte_len << endl;
 		if (serialized_pte != nullptr) {
 			secure_free(serialized_pte, serialized_pte_len);
 		}
 		
+        cout << "b" << endl;
 		if (serialized_pkt != nullptr){
 			secure_free(serialized_pkt, serialized_pkt_len);
 		}
@@ -702,32 +737,32 @@ struct bootstrap_upload
         return serialized_pkt;
     }
 
-    bool deserialize_message(uint8_t *serialized_pkt)
+    bool deserialize_message(uint8_t *serialized_pkt_received)
     {
         int pointer_counter = 0;
 
         iv = (unsigned char*)malloc(IV_LENGTH);
 
         // copy of the iv
-        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
+        memcpy(iv,serialized_pkt_received + pointer_counter,IV_LENGTH);
         pointer_counter += IV_LENGTH;
 
         // copy of the ciphertext length
-        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
+        memcpy(&cipher_len, serialized_pkt_received + pointer_counter, sizeof(cipher_len));
         cipher_len = ntohl(cipher_len);
         pointer_counter += sizeof(cipher_len);
 
         // copy of the ciphertext
-        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
+        ciphertext.assign((char *)(serialized_pkt_received + pointer_counter), cipher_len);
         pointer_counter += cipher_len;
 
         HMAC = (unsigned char *)malloc(HMAC_LENGTH);
 
         // copy of the ciphertext
-        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
+        memcpy(HMAC,serialized_pkt_received + pointer_counter,HMAC_LENGTH);
         pointer_counter += HMAC_LENGTH;
 
-        free(serialized_pkt);
+        free(serialized_pkt_received);
 
         return true;
     }
@@ -834,7 +869,7 @@ struct file_upload
         return serialized_pkt;
     }
 
-    bool deserialize_message(uint8_t *serialized_pkt){
+    bool deserialize_message(uint8_t * serialized_pkt){
         int pointer_counter = 0;
 
         iv = (unsigned char*)malloc(IV_LENGTH);
