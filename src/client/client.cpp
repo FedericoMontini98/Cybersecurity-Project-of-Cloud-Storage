@@ -49,7 +49,8 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
         data = nullptr;
         return nullptr;
     }
-
+    free(this->iv);
+    this->iv = nullptr;
     this->iv = rcvd_pkt.iv;
 
     uint32_t MAC_len; 
@@ -61,8 +62,6 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
 
     //Generate the HMAC on the receiving side iv||ciphertext
     generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
-    //Free
-    free(MACStr);
 
     //HMAC Verification
     if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
@@ -639,6 +638,7 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
         cout << "Number of chunks: " << num_chunk_to_send << endl << endl;
     }
     cout<<"MALLOC"<<endl;
+    size_t size = 8192;
     unsigned char* buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
     cout<<"MALLOC END"<<endl;
     if(!buffer){            
@@ -1709,7 +1709,7 @@ int Client::run(){
     cout<<"======================================="<<endl;
 	cout<<"=            CLIENT AVVIATO           ="<<endl;
 	cout<<"======================================="<<endl<<endl<<endl;
-    unsigned char* roba = (unsigned char*)malloc(4096);
+
     help();
 
     //vector that contains the command 
