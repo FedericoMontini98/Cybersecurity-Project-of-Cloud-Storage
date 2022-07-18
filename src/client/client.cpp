@@ -963,6 +963,8 @@ bool Client::init_session(){
 	// receive buffer
 	unsigned char* receive_buffer;
     uint32_t len;
+
+    cout<<"INITIALIZE SESSION."<<endl<<endl;
     
     // initialize socket
     if (!init_socket()){
@@ -986,9 +988,8 @@ bool Client::init_session(){
         return false;
     }
 
-    cout<<"==============================================================="<<endl;
-	cout<<"=            CONNECTED TO SERVER: USERNAME IS VALID           ="<<endl;
-	cout<<"==============================================================="<<endl<<endl<<endl;
+    cout<<"CONNECTED TO SERVER"<<endl;
+    cout<<"WAIT FOR SERVER AUTHENTICATION..."<<endl<<endl;
 	
 	// receive login_server_authentication_pkt
 	while (true){
@@ -1004,7 +1005,7 @@ bool Client::init_session(){
 			if (!server_auth_pkt.deserialize_message(receive_buffer)){
 				cerr << "ERR: some error in deserialize server_auth_pkt" << endl;
 				throw 2;
-			}
+            }
 			
 			// derive symmetric key and hmac key, hash them, take a portion of the hash for the 128 bit key
 			symmetric_key_no_hashed = derive_shared_secret(bootstrap_pkt.symmetric_key_param, server_auth_pkt.symmetric_key_param_server_clear);
@@ -1144,14 +1145,13 @@ bool Client::init_session(){
 			if (error_code > 13) { free(signed_text); }
 
             cout << "some error occurred in receiveing server_auth_pkt" << endl;
+            continue;
 		}
 		
 		break;
 	}
 
-    cout<<"======================================================="<<endl;
-	cout<<"=            SERVER CORRECTLY AUTHENTICATED           ="<<endl;
-	cout<<"======================================================="<<endl<<endl<<endl;
+	cout<<"SERVER CORRECTLY AUTHENTICATED."<<endl<<endl;
 	
 	// all is verified, time to send client authentication packet 
 	client_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear;
@@ -1174,9 +1174,7 @@ bool Client::init_session(){
 		return false;
 	}
 
-    cout<<"============================================================"<<endl;
-	cout<<"=            CLIENT AUTHENTICATION CORRECTLY SENT          ="<<endl;
-	cout<<"============================================================"<<endl<<endl<<endl;
+    cout<<"CLIENT AUTHENTICATION CORRECTLY SENT."<<endl<<endl;
 	
 	// free all
 	bootstrap_pkt.free_pointers();
