@@ -632,7 +632,7 @@ struct login_authentication_pkt {
 		if (hmac_key_param_server != nullptr)		   { EVP_PKEY_free(hmac_key_param_server); 			 }
 		if (symmetric_key_param_client != nullptr)	   { EVP_PKEY_free(symmetric_key_param_client); 	 }
 		if (hmac_key_param_client != nullptr)	       { EVP_PKEY_free(hmac_key_param_client);			 }
-		
+		/*
 		// buffers
 		if (serialized_pte != nullptr) {
 			secure_free(serialized_pte, serialized_pte_len);
@@ -641,7 +641,7 @@ struct login_authentication_pkt {
 		if (serialized_pkt != nullptr){
 			secure_free(serialized_pkt, serialized_pkt_len);
 		}
-		
+		*/
 	}
 };
 
@@ -737,6 +737,7 @@ struct bootstrap_upload
         string s = (char*)serialized_decrypted_pkt;
         string delimiter = "$";
         unsigned int pos;
+
         //Extract the code
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -747,6 +748,7 @@ struct bootstrap_upload
             }
             s.erase(0, pos + delimiter.length());
         }
+
         //Extract the filename length
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -754,12 +756,22 @@ struct bootstrap_upload
             filename_len = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
+
         // Extract the filename
         pos = s.find(delimiter);
         if(pos!=string::npos){
             filename = s.substr(0, pos);
             s.erase(0, pos + delimiter.length());
         }
+
+        // Extract the response
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            response = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+
         // Extract the counter
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -767,13 +779,12 @@ struct bootstrap_upload
             counter = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
+
         // Extract the size
         pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            filename_len = stoi(i);
-            s.erase(0, pos + delimiter.length());
-        }
+        string i = s.substr(0, pos);
+        size = stoi(i);
+        s.erase(0, pos + delimiter.length());
         free(serialized_decrypted_pkt);
         return true;
     }

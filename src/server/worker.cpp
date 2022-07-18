@@ -209,10 +209,9 @@ bool Worker::encrypt_generate_HMAC_and_send(string buffer){
     pkt.iv = this->iv;
     generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
     pkt.HMAC = HMAC;
-
     unsigned char* data;
-    int data_length;
 
+    int data_length;
     data = (unsigned char*)pkt.serialize_message(data_length);
 
     //Send the first message
@@ -223,6 +222,7 @@ bool Worker::encrypt_generate_HMAC_and_send(string buffer){
 		free(pkt.HMAC);
         return false;
     }
+
     free(MACStr);
     free(ciphertext);
     free(pkt.HMAC);
@@ -248,7 +248,7 @@ int Worker::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char
 			cerr << "malloc ciphertext failed" << endl;
 			throw 1;
 		}
-
+		memset(ciphertext,0,msg_len + block_size);
         // context definition
         ctx = EVP_CIPHER_CTX_new();
         if (!ctx) {

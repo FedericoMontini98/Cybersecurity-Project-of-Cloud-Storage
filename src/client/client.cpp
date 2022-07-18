@@ -35,8 +35,9 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
     uint32_t length_rec;
     
     //Receive the serialized data
-    if(!receive_message(data, length_rec)){
-        cerr << "ERR: some error in receiving MSG2 in upload" << endl;
+    int ret = receive_message(data, length_rec);
+    if(ret!=0){
+        cerr << "ERR: some error in receiving MSG, received error: " << ret<< endl;
 		free(data);
 		return nullptr;
     }
@@ -45,6 +46,8 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
         cerr<<"Error during deserialization of the data"<<endl;
         return nullptr;
     }
+
+    this->iv = rcvd_pkt.iv;
 
     uint32_t MAC_len; 
     unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
@@ -577,13 +580,13 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
  * @return int : result of the operation
  */
 int Client::send_encrypted_file (string filename, uint32_t& counter){
-    unsigned char* buffer;
     // build a string that cointain the path of the file
     string path = FILE_PATH + this->username + "/Upload/" + filename;
     //open the file
     FILE* file = fopen(path.c_str(), "rb"); 
     // If !file the file cant be open or is not present inside the dir
     if (!file){
+        cerr<<"Error during file opening"<<endl;
         return false;
     }
     struct stat buf;
@@ -597,19 +600,30 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
     if(DEBUG){
         cout << "Number of chunks: " << num_chunk_to_send << endl << endl;
     }
-
-    buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
+    cout<<"MALLOC"<<endl;
+    unsigned char* buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
+    cout<<"MALLOC END"<<endl;
     if(!buffer){            
         cerr << "ERR: cannot allocate a buffer for the file fragment" << endl;
         return -1;
     }
+    cout<<"MEMSET #1"<<endl;
     memset(buffer,0,FILE_FRAGMENTS_SIZE);
+    cout<<"MEMSET #1 END"<<endl;
     int ret;
     //Start to send the chunks
     for(size_t i = 0; i < num_chunk_to_send; ++i){
-
+        long to_send;
         // read bytes from file, the pointer is automatically increased
-        ret = fread(buffer, 1, FILE_FRAGMENTS_SIZE, file);
+        if(i+1 == num_chunk_to_send){
+            to_send = buf.st_size - i*FILE_FRAGMENTS_SIZE;
+        }
+        else{
+            to_send = FILE_FRAGMENTS_SIZE;
+        }
+        cout<<"SENDING "<<to_send<<" BYTES"<<endl;
+        ret = fread(buffer,1, to_send, file);
+        cout<<"END READ FILE"<<endl;
         if ( ferror(file) != 0 ){
             std::cerr << "ERR: file reading error occured" << endl;
             return -1;
@@ -677,7 +691,7 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
  * @return false : receive failed
  */
 bool Client::encrypted_file_receive(uint32_t size, string filename, uint32_t& counter){
-    string path = FILE_PATH + this->username + "/Downlaod/" + filename;
+    string path = FILE_PATH + this->username + "/Download/" + filename;
     //number of file chunk expected
 	unsigned int num_chunks = ceil((float) size/FILE_FRAGMENTS_SIZE);
     if(DEBUG)
@@ -1146,12 +1160,12 @@ bool Client::init_session(){
 	if (send_login_client_authentication(client_auth_pkt) != 0){
 		return false;
 	}
-	
+
 	// free all
 	bootstrap_pkt.free_pointers();
 	server_auth_pkt.free_pointers();
 	client_auth_pkt.free_pointers();
-	
+
 	// client consider the authentication as done, if server close the connection it means
 	// that an error occurs on signature verification
 
@@ -1265,7 +1279,7 @@ int Client::upload(string username){
     }
 
     counter++;
-    
+    cout<<"***********************************************"<<endl;
     /***************************************************************************************/
     // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
 
@@ -1273,7 +1287,7 @@ int Client::upload(string username){
     unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
 
     if(plaintxt == nullptr){
-        cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
+        cerr<<"Error during receive_decrypt_and_verify_HMAC of MSG#2"<<endl;
         return -2;
     }
 
@@ -1295,22 +1309,33 @@ int Client::upload(string username){
         cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
         return -2;
     }
+    if(DEBUG){
+        cout<<"Counter with good value"<<endl;
+    }
     // Check the response of the server
     if( rcvd_pkt.response != 1){
         cerr<<"There is already a file with the same name on the server! Rename or delete it before uploading a new one"<<endl;
         return -2;
     }
-    
+    if(DEBUG){
+        cout<<"Affirmative response"<<endl;
+    }
     counter++;
-    // If the server response is '1' the server is now ready to obtain the file 
-
+    // If the server response is '1' the server is now ready to obtain the file
     /***************************************************************************************/
     // *************************** PHASE 2 SEND THE FILE: MSG 3 ************************** //
+    
+    cout<<"***********************************************"<<endl;
+    cout<<"*********HANDLE FILE TRANSFER PHASE************"<<endl;
+    cout<<"***********************************************"<<endl;
 
     if(!send_encrypted_file(filename, counter)){
         cerr<<"error during the upload of the file"<<endl;
         return -3;
     }
+    cout<<"***********************************************"<<endl;
+    cout<<"********FILE TRANSFER PHASE COMPLETED**********"<<endl;
+    cout<<"***********************************************"<<endl;
 
     /***************************************************************************************/
     // ******************************* SEND EOF NOTIF: MSG 4 ***************************** //
@@ -1328,10 +1353,10 @@ int Client::upload(string username){
         return -4;
     }
     counter++;
-
+    cout<<"***********************************************"<<endl;
     /***************************************************************************************/
     // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 5 ******************** //
-
+    
     plaintxt = receive_decrypt_and_verify_HMAC();
 
     if(plaintxt == nullptr){

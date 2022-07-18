@@ -10,7 +10,9 @@ int Worker::handle_command(unsigned char* received_mes) {
     int code;
 
     generic_message first_pkt;
-
+    cout<<"****************************************************"<<endl;
+    cout<<"****************COMMAND HANDLER*********************"<<endl;
+    cout<<"****************************************************"<<endl;
 	try {
         
         if(!first_pkt.deserialize_message(received_mes)){
@@ -18,7 +20,7 @@ int Worker::handle_command(unsigned char* received_mes) {
             // va fatta la free del received?
             throw 0;
         }
-
+        this->iv = first_pkt.iv;
         MACStr = (unsigned char*)malloc(IV_LENGTH + first_pkt.cipher_len);
         memcpy(MACStr, first_pkt.iv, IV_LENGTH);
         memcpy(MACStr + 16,(void*)first_pkt.ciphertext.c_str(),first_pkt.cipher_len);
@@ -118,9 +120,6 @@ int Worker::handle_command(unsigned char* received_mes) {
  */
 bool Worker::checkFileExistance(string filename){
     string path = FILE_PATH + this->logged_user + "/" + filename;
-    if(DEBUG){
-        cout<<"PATH: "<<path<<endl;
-    }
     struct stat buffer;
     if (stat(path.c_str(),&buffer)!=0){ //stat failed the file doesnt exists
         return false;
@@ -136,9 +135,6 @@ bool Worker::checkFileExistance(string filename){
  */
 size_t Worker::checkFileExistanceAndGetSize(string filename){
     string path = FILE_PATH + this->logged_user + "/" + filename;
-    if(DEBUG){
-        cout<<"PATH: "<<path<<endl;
-    }
     struct stat buffer;
     if (stat(path.c_str(),&buffer)!=0){ //stat failed the file doesnt exists
         return 0;
@@ -366,8 +362,8 @@ int Worker::upload(bootstrap_upload pkt){
 
     /**********************************************************/
     /******* Phase 1: received iv + encrypt_msg + HMAC ********/
-
-    counter++;
+    cout<<"***********************************************"<<endl;
+    counter = counter +1;
     bootstrap_upload response_pkt;
     //Check if there is a file with the same name inside the user dir
     if(checkFileExistance(pkt.filename)){
@@ -384,15 +380,22 @@ int Worker::upload(bootstrap_upload pkt){
     response_pkt.size = 0;
 
     // Prepare the plaintext to encrypt
-    string buffer = to_string(response_pkt.code) + "$" + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter) + "$" + to_string(response_pkt.size);
-
+    string pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter) + "$" + to_string(response_pkt.size);
+    cout<<pt<<endl;
     //Send the MSG
-    if(!encrypt_generate_HMAC_and_send(buffer)){
+    if(!encrypt_generate_HMAC_and_send(pt)){
         cerr<<"Error during MSG#2 send"<<endl;
         return -2;
     }
-    counter++;
 
+    if(response_pkt.response == 0){
+        cout<<"Upload aborted due to a duplicated name"<<endl;
+        cout<<"***********************************************"<<endl;
+        return 0;
+    }
+
+    counter++;
+    cout<<"***********************************************"<<endl;
     /**********************************************************/
     /*************** Phase 2: receive the file ****************/
 
@@ -400,7 +403,7 @@ int Worker::upload(bootstrap_upload pkt){
         cerr<<"Phase 2 failed: error during file upload"<<endl;
         return -3;
     }
-
+    cout<<"***********************************************"<<endl;
     /**********************************************************/
     /**************** Phase 3: EOF Handshake ******************/
 
@@ -437,7 +440,7 @@ int Worker::upload(bootstrap_upload pkt){
     }
 
     counter++;
-
+    cout<<"***********************************************"<<endl;
     /*******************************************************************************/
     /**************************** LAST MESSAGE *************************************/
 
@@ -447,9 +450,9 @@ int Worker::upload(bootstrap_upload pkt){
     pkt_end_2.counter = counter;
 
     // Prepare the plaintext to encrypt
-    buffer =  to_string(pkt_end_2.code) + "$" + pkt_end_2.response + "$" + to_string(pkt_end_2.counter);
+    pt =  to_string(pkt_end_2.code) + "$" + pkt_end_2.response + "$" + to_string(pkt_end_2.counter);
 
-    if(!encrypt_generate_HMAC_and_send(buffer)){
+    if(!encrypt_generate_HMAC_and_send(pt)){
         cerr<<"Error during encrypt_generate_HMAC_and_send of MSG#5"<<endl;
         return -5;
     }
