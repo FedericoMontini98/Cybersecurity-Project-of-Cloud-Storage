@@ -156,7 +156,7 @@ bool Client::extract_private_key(string _username, string password){
 
     fclose(file);
 
-    if (privk == NULL){
+    if (privk == nullptr){
         return false;
     }
 
@@ -354,7 +354,9 @@ int& cipherlen){
 bool Client::generate_iv (const EVP_CIPHER* cipher){
     int iv_len = EVP_CIPHER_iv_length(cipher);
 
-    free(iv);
+    if (iv != nullptr){
+        free(iv);
+    }
 	iv = nullptr;
     iv = (unsigned char*) malloc(iv_len);
 
@@ -798,6 +800,7 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
         return -1;
     }
 
+    // TO FREE
 	to_copy = (unsigned char*) pkt.serialize_message(len);
 
     if (to_copy == nullptr){
@@ -805,6 +808,7 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
 		return -1;
 	}
 
+    // TO FREE
     send_buffer = (unsigned char*) malloc(len);
 
     if (!send_buffer){
@@ -849,7 +853,7 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 		return -1;
 	}
 	
-	// serialize the part to encrypt
+	// serialize the part to encrypt, TO FREE
 	to_copy = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
 
     if (to_copy == nullptr){
@@ -866,14 +870,14 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 
     memcpy(part_to_encrypt, to_copy, pte_len);
 	
-	// sign it
+	// sign it, TO FREE
 	signature = sign_message(private_key, part_to_encrypt, pte_len, signature_len);
 	if (signature == nullptr){
 		cerr << "cannot generate valid signature" << endl;
 		return -1;
 	}
 
-	// encrypt, also set the iv field
+	// encrypt, also set the iv field, TO FREE ciphertext
 	ret = cbc_encrypt_fragment(signature, signature_len, ciphertext, cipherlen, true);
 	if (ret != 0){
 		cerr << "cannot generate valid ciphertext" << endl;
@@ -887,6 +891,7 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 	// final serialization, this time there will be no dh keys in clear
     secure_free(to_copy, pte_len);
     secure_free(part_to_encrypt, pte_len);
+    // TO FREE
 	to_copy = (unsigned char*) pkt.serialize_message_no_clear_keys(final_pkt_len);
 	final_pkt = (unsigned char*) malloc(final_pkt_len);
 	
@@ -905,8 +910,8 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 
 	free(ciphertext);
 	free(iv);
+    iv = nullptr;
     free(signature);
-	iv = nullptr;
     secure_free(to_copy, final_pkt_len);
 	secure_free(final_pkt, final_pkt_len); 
 	
@@ -950,18 +955,18 @@ bool Client::init_session(){
 	login_bootstrap_pkt bootstrap_pkt;
 	login_authentication_pkt server_auth_pkt; 
 	login_authentication_pkt client_auth_pkt;
-	unsigned char* symmetric_key_no_hashed;
-	unsigned char* hmac_key_no_hashed;
-	unsigned char* plaintext;
+	unsigned char* symmetric_key_no_hashed; // TO FREE
+	unsigned char* hmac_key_no_hashed; // TO FREE
+	unsigned char* plaintext; // TO FREE
 	int plainlen;
-	unsigned char* signed_text;
+	unsigned char* signed_text; // TO FREE
 	int signed_text_len;
 	EVP_PKEY* server_pubk;
 	X509* ca_cert;
 	X509_CRL* ca_crl;
 	
 	// receive buffer
-	unsigned char* receive_buffer;
+	unsigned char* receive_buffer; // TO FREE
     uint32_t len;
 
     cout<<"INITIALIZE SESSION."<<endl<<endl;
@@ -1043,7 +1048,9 @@ bool Client::init_session(){
 			secure_free(hmac_key_no_hashed, HMAC_KEY_SIZE);
 			
 			// decrypt the encrypted part using the derived symmetric key and the received iv
-			free(iv);
+            if (iv != nullptr){
+			    free(iv);
+            }
 			iv = (unsigned char*) malloc(iv_size);
 			
 			if(!iv){
@@ -1052,6 +1059,7 @@ bool Client::init_session(){
 			}
 			
 			memcpy(iv, server_auth_pkt.iv_cbc, iv_size);
+            free(server_auth_pkt.iv_cbc);
 
 			ret = cbc_decrypt_fragment(server_auth_pkt.encrypted_signing, server_auth_pkt.encrypted_signing_len, plaintext, plainlen);
 			
@@ -1102,11 +1110,11 @@ bool Client::init_session(){
 			
 			// SET THE FIELDS THAT WE HAVE GENERATED BEFORE
 			server_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
-			EVP_PKEY_up_ref(bootstrap_pkt.symmetric_key_param);
+			/*EVP_PKEY_up_ref(bootstrap_pkt.symmetric_key_param);*/
 			server_auth_pkt.symmetric_key_param_len_client = bootstrap_pkt.symmetric_key_param_len;
 			
 			server_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
-			EVP_PKEY_up_ref(bootstrap_pkt.hmac_key_param);
+			/*EVP_PKEY_up_ref(bootstrap_pkt.hmac_key_param);*/
 			server_auth_pkt.hmac_key_param_len_client = bootstrap_pkt.hmac_key_param_len;
 			
 			// this will serialize as the server did
@@ -1130,7 +1138,8 @@ bool Client::init_session(){
 			// frees
 			free(signed_text);
             free(to_copy);
-			free(receive_buffer);
+			secure_free(receive_buffer, len);
+            free(plaintext);
 			X509_free(ca_cert);
 			X509_CRL_free(ca_crl);
 			EVP_PKEY_free(server_pubk);
@@ -1147,27 +1156,24 @@ bool Client::init_session(){
             cout << "some error occurred in receiveing server_auth_pkt" << endl;
             continue;
 		}
-		
+
+		cout<<"SERVER CORRECTLY AUTHENTICATED."<<endl<<endl;
 		break;
 	}
 
-	cout<<"SERVER CORRECTLY AUTHENTICATED."<<endl<<endl;
+	
 	
 	// all is verified, time to send client authentication packet 
 	client_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear;
-	EVP_PKEY_up_ref(server_auth_pkt.symmetric_key_param_server_clear);
 	client_auth_pkt.symmetric_key_param_len_server = server_auth_pkt.symmetric_key_param_server_clear_len;
 	
 	client_auth_pkt.hmac_key_param_server = server_auth_pkt.hmac_key_param_server_clear;
-	EVP_PKEY_up_ref(server_auth_pkt.hmac_key_param_server_clear);
 	client_auth_pkt.hmac_key_param_len_server = server_auth_pkt.hmac_key_param_server_clear_len;
 	
 	client_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
-	EVP_PKEY_up_ref(bootstrap_pkt.symmetric_key_param);
 	client_auth_pkt.symmetric_key_param_len_client = bootstrap_pkt.symmetric_key_param_len;
 	
 	client_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
-	EVP_PKEY_up_ref(bootstrap_pkt.hmac_key_param);
 	client_auth_pkt.hmac_key_param_len_client = bootstrap_pkt.hmac_key_param_len;
 	
 	if (send_login_client_authentication(client_auth_pkt) != 0){
@@ -1175,11 +1181,13 @@ bool Client::init_session(){
 	}
 
     cout<<"CLIENT AUTHENTICATION CORRECTLY SENT."<<endl<<endl;
-	
-	// free all
-	bootstrap_pkt.free_pointers();
-	server_auth_pkt.free_pointers();
-    client_auth_pkt.free_pointers();
+
+    // free dh keys
+    EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+    EVP_PKEY_free(bootstrap_pkt.hmac_key_param);
+    EVP_PKEY_free(server_auth_pkt.symmetric_key_param_server_clear);
+    EVP_PKEY_free(server_auth_pkt.hmac_key_param_server_clear);
+
 
     return true;
 }
