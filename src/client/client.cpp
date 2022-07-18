@@ -39,18 +39,21 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
     if(ret!=0){
         cerr << "ERR: some error in receiving MSG, received error: " << ret<< endl;
 		free(data);
+        data = nullptr;
 		return nullptr;
     }
 
     if(!rcvd_pkt.deserialize_message(data)){
         cerr<<"Error during deserialization of the data"<<endl;
+        free(data);
+        data = nullptr;
         return nullptr;
     }
 
     this->iv = rcvd_pkt.iv;
 
     uint32_t MAC_len; 
-    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    unsigned char*  MACStr;
     unsigned char* HMAC;
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
@@ -64,6 +67,10 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
     //HMAC Verification
     if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
         cout<<"HMAC cant be verified, try again"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(rcvd_pkt.HMAC);
+        rcvd_pkt.HMAC = nullptr;
         return nullptr;
     }
 
@@ -76,11 +83,18 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
     //Decrypt the ciphertext and obtain the plaintext
     if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
         cout<<"Error during encryption"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(rcvd_pkt.HMAC);
+        rcvd_pkt.HMAC = nullptr;
         return nullptr;
     }
-
+    free(MACStr);
+    MACStr = nullptr;
     free(HMAC);
+    HMAC = nullptr;
     free(rcvd_pkt.HMAC);
+    rcvd_pkt.HMAC = nullptr;
     return plaintxt;
 }
 
@@ -100,6 +114,8 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
 	// Encryption
     if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), ciphertext, cipherlen, true)!=0){
         cout<<"Error during encryption"<<endl;
+        free(ciphertext);
+        ciphertext = nullptr;
         return false;
     }
 
@@ -122,17 +138,39 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
 
     data = (unsigned char*)pkt.serialize_message(data_length);
 
+    if(data == nullptr){
+        free(MACStr);
+        MACStr = nullptr;
+        free(ciphertext);
+        ciphertext = nullptr;
+        free(pkt.HMAC);
+        pkt.HMAC = nullptr;
+
+        cerr<<"Error during serialization"<<endl;
+        return false;
+    }
+
     //Send the first message
     if(!send_message((void *)data, data_length)){
         cout<<"Error during packet #1 forwarding"<<endl;
         free(MACStr);
+        MACStr = nullptr;
         free(ciphertext);
-		free(pkt.HMAC);
+        ciphertext = nullptr;
+        free(pkt.HMAC);
+        pkt.HMAC = nullptr;
+        free(data);
+        data = nullptr;
         return false;
     }
     free(MACStr);
+    MACStr = nullptr;
     free(ciphertext);
+    ciphertext = nullptr;
     free(pkt.HMAC);
+    pkt.HMAC = nullptr;
+    free(data);
+    data = nullptr;
 	return true;
 }
 
@@ -1673,7 +1711,7 @@ int Client::run(){
     cout<<"======================================="<<endl;
 	cout<<"=            CLIENT AVVIATO           ="<<endl;
 	cout<<"======================================="<<endl<<endl<<endl;
-
+    unsigned char* roba = (unsigned char*)malloc(4096);
     help();
 
     //vector that contains the command 
