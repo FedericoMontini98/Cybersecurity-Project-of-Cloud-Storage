@@ -791,9 +791,7 @@ bool Client::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
 int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
 	unsigned char* send_buffer;
 	int len;
-	
-    // initialize to 0 the pack
-    //memset(&pkt, 0, sizeof(pkt));
+    unsigned char* to_copy;
 	
 	// lens will be automatically set after sending
     pkt.code = LOGIN_BOOTSTRAP;
@@ -814,17 +812,29 @@ int Client::send_login_bootstrap(login_bootstrap_pkt& pkt){
         return -1;
     }
 
-	send_buffer = (unsigned char*) pkt.serialize_message(len);
-	
-	if (send_buffer == nullptr){
+	to_copy = (unsigned char*) pkt.serialize_message(len);
+
+    if (to_copy == nullptr){
 		cerr << "ERR: failed to serialize login bootstrap packet" << endl;
 		return -1;
 	}
+
+    send_buffer = (unsigned char*) malloc(len);
+
+    if (!send_buffer){
+        cerr << "malloc failed on send_buffer" << endl;
+        return -1;
+    }
+	
+	memcpy(send_buffer, to_copy, len);
 	
     if (!send_message(send_buffer, len)){
         cerr << "ERR: failed to send login bootstrap packet" << endl;
         return -1;
     }
+
+    secure_free(send_buffer, len);
+    secure_free(to_copy, len);
 	
     return 0;
     
@@ -839,6 +849,7 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 	unsigned char* signature;
 	unsigned char* ciphertext;
 	unsigned char* final_pkt;
+    unsigned char* to_copy;
 	int cipherlen;
 	int ret;
 	
@@ -853,12 +864,21 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 	}
 	
 	// serialize the part to encrypt
-	part_to_encrypt = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
-	
-	if (part_to_encrypt == nullptr){
+	to_copy = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
+
+    if (to_copy == nullptr){
 		cerr << "error in serialize part to encrypt" << endl;
 		return -1;
 	}
+
+    part_to_encrypt = (unsigned char*) malloc(pte_len);
+
+    if(part_to_encrypt == nullptr){
+        cerr << "failed malloc on part_to_encrypt" << endl;
+        return -1;
+    }
+
+    memcpy(part_to_encrypt, to_copy, pte_len);
 	
 	// sign it
 	signature = sign_message(private_key, part_to_encrypt, pte_len, signature_len);
@@ -873,13 +893,15 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 		cerr << "cannot generate valid ciphertext" << endl;
 		return -1;
 	}
-	
+   
 	pkt.iv_cbc = iv;
 	pkt.encrypted_signing = ciphertext;
 	pkt.encrypted_signing_len = cipherlen;
 	
 	// final serialization, this time there will be no dh keys in clear
-	unsigned char* to_copy = (unsigned char*) pkt.serialize_message_no_clear_keys(final_pkt_len);
+    secure_free(to_copy, pte_len);
+    secure_free(part_to_encrypt, pte_len);
+	to_copy = (unsigned char*) pkt.serialize_message_no_clear_keys(final_pkt_len);
 	final_pkt = (unsigned char*) malloc(final_pkt_len);
 	
 	if (!final_pkt){
@@ -894,11 +916,13 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 		cerr << "message cannot be sent" << endl;
 		return -1;
 	}
-	
+
 	free(ciphertext);
 	free(iv);
+    free(signature);
 	iv = nullptr;
-	free(final_pkt);
+    secure_free(to_copy, final_pkt_len);
+	secure_free(final_pkt, final_pkt_len); 
 	
 	return 0;
 }
@@ -950,10 +974,6 @@ bool Client::init_session(){
 	X509* ca_cert;
 	X509_CRL* ca_crl;
 	
-	memset(&bootstrap_pkt, 0, sizeof(bootstrap_pkt));
-	memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
-	memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
-	
 	// receive buffer
 	unsigned char* receive_buffer;
     uint32_t len;
@@ -979,6 +999,10 @@ bool Client::init_session(){
         cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
         return false;
     }
+
+    cout<<"==============================================================="<<endl;
+	cout<<"=            CONNECTED TO SERVER: USERNAME IS VALID           ="<<endl;
+	cout<<"==============================================================="<<endl<<endl<<endl;
 	
 	// receive login_server_authentication_pkt
 	while (true){
@@ -990,7 +1014,7 @@ bool Client::init_session(){
 				throw 1;
 			}
 			
-			// check if it is consistent with server_auth_pkt
+			// check if it is consistent with server_auth_pkt, the call already free the buffer
 			if (!server_auth_pkt.deserialize_message(receive_buffer)){
 				cerr << "ERR: some error in deserialize server_auth_pkt" << endl;
 				throw 2;
@@ -1118,6 +1142,7 @@ bool Client::init_session(){
 			
 			// frees
 			free(signed_text);
+            free(to_copy);
 			free(receive_buffer);
 			X509_free(ca_cert);
 			X509_CRL_free(ca_crl);
@@ -1131,14 +1156,16 @@ bool Client::init_session(){
 			if (error_code > 10) { X509_CRL_free(ca_crl); }
 			if (error_code > 12) { EVP_PKEY_free(server_pubk); }
 			if (error_code > 13) { free(signed_text); }
-			
-			// reset structures
-			memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
-			memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
+
+            cout << "some error occurred in receiveing server_auth_pkt" << endl;
 		}
 		
 		break;
 	}
+
+    cout<<"======================================================="<<endl;
+	cout<<"=            SERVER CORRECTLY AUTHENTICATED           ="<<endl;
+	cout<<"======================================================="<<endl<<endl<<endl;
 	
 	// all is verified, time to send client authentication packet 
 	client_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear;
@@ -1161,13 +1188,14 @@ bool Client::init_session(){
 		return false;
 	}
 
+    cout<<"============================================================"<<endl;
+	cout<<"=            CLIENT AUTHENTICATION CORRECTLY SENT          ="<<endl;
+	cout<<"============================================================"<<endl<<endl<<endl;
+	
 	// free all
 	bootstrap_pkt.free_pointers();
 	server_auth_pkt.free_pointers();
-	client_auth_pkt.free_pointers();
-
-	// client consider the authentication as done, if server close the connection it means
-	// that an error occurs on signature verification
+    client_auth_pkt.free_pointers();
 
     return true;
 }
