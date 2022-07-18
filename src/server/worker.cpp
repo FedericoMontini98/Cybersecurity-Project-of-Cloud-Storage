@@ -508,6 +508,7 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	int pte_len;
 	int final_pkt_len;
 	unsigned int signature_len;
+	unsigned char* to_copy;
 	unsigned char* signature;
 	unsigned char* ciphertext;
 	unsigned char* final_pkt;
@@ -523,12 +524,21 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	}
 	
 	// serialize the part to encrypt
-	part_to_encrypt = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
-	
-	if (part_to_encrypt == nullptr){
+	to_copy = (unsigned char*) pkt.serialize_part_to_encrypt(pte_len);
+
+    if (to_copy == nullptr){
 		cerr << "error in serialize part to encrypt" << endl;
 		return -1;
 	}
+
+    part_to_encrypt = (unsigned char*) malloc(pte_len);
+
+    if(part_to_encrypt == nullptr){
+        cerr << "failed malloc on part_to_encrypt" << endl;
+        return -1;
+    }
+
+    memcpy(part_to_encrypt, to_copy, pte_len);
 	
 	// sign it
 	signature = sign_message(private_key, part_to_encrypt, pte_len, signature_len);
@@ -549,12 +559,31 @@ int Worker::send_login_server_authentication(login_authentication_pkt& pkt){
 	pkt.encrypted_signing_len = cipherlen;
 	
 	// final serialization
-	final_pkt = (unsigned char*) pkt.serialize_message(final_pkt_len);
+	secure_free(to_copy, pte_len);
+    secure_free(part_to_encrypt, pte_len);
+	to_copy = (unsigned char*) pkt.serialize_message(final_pkt_len);
+	final_pkt = (unsigned char*) malloc(final_pkt_len);
+
+	if (!final_pkt){
+		cerr << "malloc failed on final_pkt" << endl;
+		return -1;
+	}
+	
+	// copy
+	memcpy(final_pkt, to_copy, final_pkt_len);
 	
 	if (!send_message(final_pkt, final_pkt_len)){
 		cerr << "message cannot be sent" << endl;
 		return -1;
 	}
+
+	// frees
+	free(ciphertext);
+	free(iv);
+    free(signature);
+	iv = nullptr;
+    secure_free(to_copy, final_pkt_len);
+	secure_free(final_pkt, final_pkt_len); 
 	
 	return 0;
 }
@@ -569,6 +598,7 @@ bool Worker::init_session(){
 	unsigned char* hmac_key_no_hashed;
 	unsigned char* plaintext;
 	int plainlen;
+	unsigned char* to_copy;
 	unsigned char* signed_text;
 	int signed_text_len;
 	EVP_PKEY* client_pubk;
@@ -578,7 +608,9 @@ bool Worker::init_session(){
 	// receive buffer
 	unsigned char* receive_buffer;
     uint32_t len;
-	
+
+	cout<<"INITIALIZE SESSION."<<endl<<endl;
+
 	// receive bootstrap_pkt from client
 	while (true){
 		
@@ -618,6 +650,9 @@ bool Worker::init_session(){
 		break;
 	}
 	
+	cout<<"LOGIN SESSION OF USERNAME: "+bootstrap_pkt.username+"."<<endl;
+	cout<<"GENERATING NEW KEYS AND SENDING SERVER AUTHENTICATION."<<endl<<endl;
+
 	// generate dh keys
 	server_auth_pkt.symmetric_key_param_server_clear = generate_sts_key_param();
 	server_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear; // TO ENCRYPT
@@ -682,6 +717,8 @@ bool Worker::init_session(){
 		return false;
 	}
 
+	cout<<"SERVER AUTHENTICATION CORRECTLY SENT."<<endl;
+	cout<<"WAIT FOR CLIENT AUTHENTICATION..."<<endl<<endl;
 	
 	// receive client authentication pkt
 	while (true){
@@ -787,6 +824,7 @@ bool Worker::init_session(){
 			}
 			
 			// frees
+			free(to_copy);
 			free(signed_text);
 			free(receive_buffer);
 			X509_free(ca_cert);
@@ -800,18 +838,17 @@ bool Worker::init_session(){
 			if (error_code > 5) {X509_free(ca_cert);}
 			if (error_code > 6) {X509_CRL_free(ca_crl);}
 			if (error_code > 8) {EVP_PKEY_free(client_pubk);}
-			if (error_code > 9) { free(signed_text); }
+			if (error_code > 9) {free(signed_text); }
 
 			cout << "some error occurred in receiveing client_auth_pkt" << endl;
-			
-			// reset structures
-			memset(&server_auth_pkt, 0, sizeof(server_auth_pkt));
-			memset(&client_auth_pkt, 0, sizeof(client_auth_pkt));
+			continue;
 		}
 		
 		break;
 		
 	}
+
+	cout<<"CLIENT CORRECTLY AUTHENTICATED."<<endl<<endl;
 	
 	// user correctly authenticated
 	logged_user = bootstrap_pkt.username;

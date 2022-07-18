@@ -263,9 +263,7 @@ struct login_bootstrap_pkt
 	
 	// free keys
 	void free_pointers(){
-        cout << "a" << endl;
 		if (symmetric_key_param != nullptr) { EVP_PKEY_free(symmetric_key_param); }
-        cout << "b" << endl;
 		if (hmac_key_param != nullptr)  	{ EVP_PKEY_free(hmac_key_param); 	  }
 		
 	}
@@ -621,22 +619,13 @@ struct login_authentication_pkt {
 	void free_pointers(){
 		
 		// fields
-
 		if ( cert != nullptr) { X509_free(cert); }
-  
 		if (symmetric_key_param_server_clear!= nullptr){ EVP_PKEY_free(symmetric_key_param_server_clear);}
-        
 		if (hmac_key_param_server_clear != nullptr)    { EVP_PKEY_free(hmac_key_param_server_clear); 	 }
-        
 		if (symmetric_key_param_server != nullptr)	   { EVP_PKEY_free(symmetric_key_param_server); 	 }
-        
 		if (hmac_key_param_server != nullptr)		   { EVP_PKEY_free(hmac_key_param_server); 			 }
-        
 		if (symmetric_key_param_client != nullptr)	   { EVP_PKEY_free(symmetric_key_param_client); 	 }
-        
-		if (hmac_key_param_client != nullptr)	       { EVP_PKEY_free(hmac_key_param_client);			 }
-       
-		
+		if (hmac_key_param_client != nullptr)	       { EVP_PKEY_free(hmac_key_param_client);			 }	
 	}
 };
 
