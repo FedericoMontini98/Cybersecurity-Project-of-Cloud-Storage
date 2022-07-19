@@ -890,6 +890,7 @@ struct bootstrap_upload
 /*********************************************************************************************************************************/
 
 #define FILE_UPLOAD 6
+#define FILE_UPLOAD 6
 struct file_upload
 {
     //In clear fields
@@ -981,39 +982,26 @@ struct file_upload
     }
 
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
-        unsigned int pos;
-        string s = (char*)serialized_decrypted_pkt;
-        string delimiter = "$";
+        uint32_t pointer_counter = 0;
+        memcpy(&code, serialized_decrypted_pkt,sizeof(code));
+        code = ntohs(code);
+        pointer_counter += sizeof(code);
 
-        // Extract the CODE
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            code = stoi(i);
-            if(code!=FILE_UPLOAD){
-                return false;
-            }
-            s.erase(0, pos + delimiter.length());
+        memcpy(&counter, serialized_decrypted_pkt + pointer_counter ,sizeof(counter));
+        counter = ntohl(counter);
+        pointer_counter += sizeof(counter);
+
+        memcpy(&msg_len, serialized_decrypted_pkt + pointer_counter ,sizeof(msg_len));
+        msg_len = ntohl(msg_len);
+        pointer_counter += sizeof(msg_len);
+
+        msg = (uint8_t*)malloc(msg_len);
+        memcpy(msg, serialized_decrypted_pkt + pointer_counter, msg_len);
+
+        for (int i = 0; i<msg_len; i++){
+            std::cout << static_cast<unsigned int>(msg[i]) << std::flush;
         }
-        // Extract the counter
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            counter = stoi(i);
-            s.erase(0, pos + delimiter.length());
-        }
-        // Extract the msg_len
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            msg_len = stoi(i);
-            s.erase(0, pos + delimiter.length());
-        }
-        // Extract the msg
-        if(pos!=string::npos){
-            msg = (unsigned char*)malloc(msg_len);
-            memcpy(msg,(unsigned char*)s.substr(0, string::npos).c_str(),msg_len);
-        }
+        cout << endl;
 
         free(serialized_decrypted_pkt);
         return true;
