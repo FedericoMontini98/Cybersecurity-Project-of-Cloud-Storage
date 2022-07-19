@@ -613,9 +613,13 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
                     files.append(directory_entry->d_name);
                     files.append("\n");
                 }
+                
+                if((directory_entry = readdir (user_directory)) != NULL){
+                    // delitin the last \n 
+                    files.erase(files.length()-1);
+                }
+                
                 closedir(user_directory);
-                // delitin the last \n 
-                files.erase(files.length()-1);
                 // we put the data into the pkt
                 response_pkt.response_output = files;
                 

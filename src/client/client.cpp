@@ -1853,11 +1853,11 @@ int Client::simple_operation(int operation){
     // Prepare the plaintext to encrypt
     if (pkt.simple_op_code == BOOTSTRAP_LIST || pkt.simple_op_code == BOOTSTRAP_DELETE) {
         buffer = to_string(pkt.code) + "$" + to_string(pkt.simple_op_code) + "$" + to_string(pkt.filename_len) 
-        + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+        + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter)+ "$";
     }
     else if (pkt.simple_op_code == BOOTSTRAP_RENAME){
         buffer = to_string(pkt.code) + "$" + to_string(pkt.simple_op_code) + "$" + to_string(pkt.filename_len) 
-        + "$" + filename + "$" + renamed_filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+        + "$" + filename + "$" + renamed_filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter)+ "$";
     }
 
     if(!encrypt_generate_HMAC_and_send(buffer)){
@@ -1919,7 +1919,14 @@ int Client::simple_operation(int operation){
 
     // response_output available (eg. list), i print it on stdout
     if (rcvd_pkt.response == 2 && rcvd_pkt.simple_op_code == BOOTSTRAP_LIST){
-        cout << "LIST OUTPUT:\n" + rcvd_pkt.response_output << endl;
+        cout <<"LIST OUTPUT: " <<endl <<endl;
+        if(rcvd_pkt.response_output.compare("") == 0){
+            cout <<"Files not found on the cloud" <<endl;
+        }
+        else{   
+            cout << rcvd_pkt.response_output <<  endl;
+        }
+        cout << endl;
     }
 
     return 0;
