@@ -85,6 +85,7 @@ class Client{
     // packets methods
     //Utility function
     unsigned char* receive_decrypt_and_verify_HMAC();
+    unsigned char* receive_decrypt_and_verify_HMAC_for_files();
     bool encrypt_generate_HMAC_and_send(string buffer);
     bool encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len);
 

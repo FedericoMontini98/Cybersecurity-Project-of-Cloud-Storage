@@ -269,6 +269,13 @@ int Worker::send_encrypted_file (string filename, uint32_t& counter){
 
         ret = fread(buffer,1, to_send, file);
 
+        if(ret != to_send && DEBUG){
+            cerr<<"Error: to send="<<to_send<<" and ret="<<ret<<endl;
+        }
+
+        if(DEBUG)
+            cout<<"read: "<<ret<<" bytes"<<endl;
+
         if ( ferror(file) != 0 ){
             std::cerr << "ERR: file reading error occured" << endl;
             return -1;
@@ -279,23 +286,44 @@ int Worker::send_encrypted_file (string filename, uint32_t& counter){
         pkt.code = FILE_UPLOAD;
         pkt.counter = counter;
         pkt.msg_len = ret;
-        pkt.msg = (unsigned char*)buffer;
-
-        string to_encrypt = to_string(pkt.code) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.msg_len) + "$" + reinterpret_cast<char*>(pkt.msg);
- 
-        //Send the fragment
-        if(!encrypt_generate_HMAC_and_send(to_encrypt)){
-            cerr<<"Error during encrypt_generate_HMAC_and_send of fragment n°"<<i+1<<endl;
+        pkt.msg = buffer;
+        long size = sizeof(pkt.code) + sizeof(pkt.counter) + sizeof(pkt.msg_len) + ret;
+        uint8_t* to_encrypt = (uint8_t*)malloc(size);
+        if(to_encrypt == nullptr){
+            cerr<<"Failed malloc of to_encrypt"<<endl;
             return -1;
         }
 
+        memset(to_encrypt,0,size);
+        
+        uint32_t cnt = 0;
+        pkt.code = htons(pkt.code);
+        memcpy(to_encrypt,&pkt.code,sizeof(pkt.code));
+        cnt += sizeof(pkt.code);
+
+        pkt.counter = htonl(pkt.counter);
+        memcpy(to_encrypt + cnt ,&pkt.counter,sizeof(pkt.counter));
+        cnt += sizeof(pkt.counter);
+
+        pkt.msg_len = htonl(pkt.msg_len);
+        memcpy(to_encrypt + cnt ,&pkt.msg_len,sizeof(pkt.msg_len));
+        cnt += sizeof(pkt.msg_len);
+
+        memcpy(to_encrypt + cnt ,buffer,ret);
+
+        //Send the fragment
+        if(!encrypt_generate_HMAC_and_send(to_encrypt, size)){
+            cerr<<"Error during encrypt_generate_HMAC_and_send of fragment n°"<<i+1<<endl;
+            return -1;
+        }
         counter++;
+        free(to_encrypt);
         memset(buffer,0,FILE_FRAGMENTS_SIZE);
     }
     fclose(file);
     free(buffer);
     return 0;
-}
+}  
 
 /**
  * @brief function that manage the upload request from the client

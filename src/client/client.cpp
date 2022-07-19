@@ -99,6 +99,81 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
 }
 
 /**
+ * @brief manage the receive and various general checks on the received packet fo files
+ *        MANAGE THE plaintxt destruction!
+ * @return unsigned* the plaintext to deserialize inside the correct packet type
+ */
+unsigned char* Client::receive_decrypt_and_verify_HMAC_for_files(){
+    unsigned char* data;
+    generic_message_file rcvd_pkt;
+    uint32_t length_rec;
+    
+    //Receive the serialized data
+    int ret = receive_message(data, length_rec);
+    if(ret!=0){
+        cerr << "ERR: some error in receiving MSG, received error: " << ret<< endl;
+		free(data);
+        data = nullptr;
+		return nullptr;
+    }
+
+	//It also FREE data if reaches the end
+    if(!rcvd_pkt.deserialize_message(data)){
+        cerr<<"Error during deserialization of the data"<<endl;
+        free(data);
+        data = nullptr;
+        return nullptr;
+    }
+
+	//Deallocate the iv
+	if(this->iv != nullptr)
+    	free(this->iv);
+    this->iv = rcvd_pkt.iv;
+
+    uint32_t MAC_len; 
+    uint8_t*  MACStr;
+    uint8_t* HMAC;
+
+    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
+    memcpy(MACStr, this->iv , IV_LENGTH);
+    memcpy(MACStr + IV_LENGTH,rcvd_pkt.ciphertext,rcvd_pkt.cipher_len);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
+
+    //HMAC Verification
+    if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
+        cout<<"HMAC cant be verified, try again"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(rcvd_pkt.HMAC);
+        rcvd_pkt.HMAC = nullptr;
+        return nullptr;
+    }
+
+    unsigned char* plaintxt;
+    int ptlen;
+
+    //Decrypt the ciphertext and obtain the plaintext
+    if(cbc_decrypt_fragment(rcvd_pkt.ciphertext,rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
+        cout<<"Error during encryption"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(rcvd_pkt.HMAC);
+        rcvd_pkt.HMAC = nullptr;
+        return nullptr;
+    }
+    free(MACStr);
+    MACStr = nullptr;
+    free(HMAC);
+    HMAC = nullptr;
+    free(rcvd_pkt.HMAC);
+    rcvd_pkt.HMAC = nullptr;
+    return plaintxt;
+}
+
+/**
  * @brief Encrypt the plaintext and fill a generic packet to send through the socket
  * 
  * @param buffer : plaintext to encrypt
@@ -833,7 +908,7 @@ bool Client::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
 	for(uint32_t i = 0; i < num_chunks; ++i){
         //Receive the message
         unsigned char* plaintxt;
-        plaintxt = receive_decrypt_and_verify_HMAC();
+        plaintxt = receive_decrypt_and_verify_HMAC_for_files();
         file_upload pkt;
     
         if(plaintxt == nullptr){
@@ -842,9 +917,6 @@ bool Client::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
             buffer = nullptr;
             return -2;
         }
-
-        if(DEBUG)
-            cout<<"PLAINTEXT RECEIVED: "<<plaintxt<<endl;
 
         //Parsing and pkt parameters setting, it also free 'plaintxt'
         if(!pkt.deserialize_plaintext(plaintxt)){

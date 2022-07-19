@@ -329,6 +329,84 @@ bool Worker::encrypt_generate_HMAC_and_send(string buffer){
 	return true;
 }
 
+/**
+ * @brief Encrypt the plaintext and fill a generic packet to send through the socket REDEFINITION FOR FILE TRANSFER
+ * 
+ * @param buffer : plaintext to encrypt
+ * @return true : the crypted msg has been sent successfully
+ * @return false : error during packet preparation or during the send
+ */
+bool Worker::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
+	// Generic Packet
+	generic_message_file pkt;
+    cout<<"buffer len: "<<msg_len<<endl;
+	unsigned char* ciphertext;
+    int cipherlen;
+	// Encryption
+    if(cbc_encrypt_fragment((unsigned char*)buffer, msg_len, ciphertext, cipherlen, true)!=0){
+        cout<<"Error during encryption"<<endl;
+        free(ciphertext);
+        ciphertext = nullptr;
+        return false;
+    }
+    cout<<"ciphertxt length: "<<cipherlen<<endl;
+	// Get the HMAC
+    uint32_t MAC_len; 
+    uint8_t*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    unsigned char* HMAC;
+    memcpy(MACStr,this->iv, IV_LENGTH);
+    memcpy(MACStr + IV_LENGTH,ciphertext,cipherlen);
+
+	//Initialization of the data to serialize
+    pkt.ciphertext = ciphertext;
+    pkt.cipher_len = cipherlen;
+    pkt.iv = this->iv;
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
+    pkt.HMAC = HMAC;
+
+    unsigned char* data;
+    int data_length;
+
+    data = (unsigned char*)pkt.serialize_message(data_length);
+
+    if(data == nullptr){
+        free(MACStr);
+        MACStr = nullptr;
+        free(ciphertext);
+        ciphertext = nullptr;
+        free(pkt.HMAC);
+        pkt.HMAC = nullptr;
+
+        cerr<<"Error during serialization"<<endl;
+        return false;
+    }
+
+    //Send the first message
+    if(!send_message((void *)data, data_length)){
+        cout<<"Error during packet #1 forwarding"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(ciphertext);
+        ciphertext = nullptr;
+        free(pkt.HMAC);
+        pkt.HMAC = nullptr;
+        free(data);
+        data = nullptr;
+        return false;
+    }
+
+    free(MACStr);
+    MACStr = nullptr;
+    free(ciphertext);
+    ciphertext = nullptr;
+    free(pkt.HMAC);
+    pkt.HMAC = nullptr;
+    free(data);
+    data = nullptr;
+	return true;
+}
+
+
 int Worker::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, bool _generate_iv){
 	int outlen;
     int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
