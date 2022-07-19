@@ -1805,6 +1805,7 @@ int Client::download(string username){
 int Client::simple_operation(int operation){
     uint32_t counter = 0;
     string filename;
+    string renamed_filename;
 
     if ( operation == BOOTSTRAP_DELETE ){
         cout<<"**********************************************"<<endl;
@@ -1817,6 +1818,10 @@ int Client::simple_operation(int operation){
         cout<<"Which file do you want to rename on the cloud?"<<endl;
         cout<<"**********************************************"<<endl<<endl;
         cin>>filename;
+        cout<<"**********************************************"<<endl;
+        cout<<"Insert the new name for the file: "<< filename<<endl;
+        cout<<"**********************************************"<<endl<<endl;
+        cin>>renamed_filename;
     }
     else if ( operation == BOOTSTRAP_LIST ){
         filename = "--";
@@ -1828,18 +1833,25 @@ int Client::simple_operation(int operation){
         return -1;
     }
 
+    // patht traversal
+    if (renamed_filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+        std::cerr << "ERR: command check on whitelist fails"<<endl;
+        return -1;
+    }
+
     //Packet initialization
     bootstrap_simple_operation pkt;
     pkt.code = BOOTSTRAP_SIMPLE_OPERATION;
     pkt.simple_op_code = operation;
     pkt.filename = filename;
     pkt.filename_len = strlen(filename.c_str());
+    pkt.renamed_filename = renamed_filename;
     pkt.response = 0;
     pkt.counter = counter;
 
     // Prepare the plaintext to encrypt
     string buffer = to_string(pkt.code) + "$" + to_string(pkt.simple_op_code) + "$" + to_string(pkt.filename_len) 
-    + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+    + "$" + filename + "$" + renamed_filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
 
     if(!encrypt_generate_HMAC_and_send(buffer)){
         cerr<<"Error during encryption and send of MSG#1 of Delete"<<endl;

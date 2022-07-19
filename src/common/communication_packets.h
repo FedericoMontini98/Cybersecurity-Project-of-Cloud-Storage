@@ -1149,6 +1149,7 @@ struct bootstrap_simple_operation{
     uint16_t simple_op_code;
     uint32_t filename_len;
     string filename;
+    string renamed_filename;
     uint32_t response; // 0: operation not allowed, 1: operation allowed, 2: operation allowed and response_output available
     uint32_t counter;
 
@@ -1198,6 +1199,16 @@ struct bootstrap_simple_operation{
             s.erase(0, pos + delimiter.length());
         }
 
+        if(simple_op_code == BOOTSTRAP_RENAME){
+        
+            // Extract the renamed_filename
+            pos = s.find(delimiter);
+            if(pos!=string::npos){
+                renamed_filename = s.substr(0, pos);
+                s.erase(0, pos + delimiter.length());
+            }
+        }
+        
         // Extract the response
         pos = s.find(delimiter);
         if(pos!=string::npos){

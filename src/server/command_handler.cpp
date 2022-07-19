@@ -48,6 +48,7 @@ int Worker::handle_command(unsigned char* received_mes) {
             throw 0;
         }
 
+        cout<<"qui"<<endl;
 
         /*********  FREE HOW TO HANDLE ********/
         switch(code) {
@@ -79,12 +80,14 @@ int Worker::handle_command(unsigned char* received_mes) {
             // delete, rename, list
             case BOOTSTRAP_SIMPLE_OPERATION:
             {
+                cout<<"qui2"<<endl;
                 bootstrap_simple_operation pkt_simple;
                 //Parsing and pkt parameters setting, it also free 'plaintxt'
                 if(!pkt_simple.deserialize_plaintext(plaintxt)){
                     cerr<<"Received wrong message type!"<<endl;
                     throw 0;
                 }
+                cout<<"qui3"<<endl;
                 int ret = simple_operation(pkt_simple);
                 return ret;
             }
@@ -602,21 +605,29 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
         }
 
         else if (pkt.simple_op_code == BOOTSTRAP_RENAME){
-            // DO RENAME
+
+            string renamed_file = FILE_PATH + this->logged_user + "/" + pkt.renamed_filename;
+
+            cout<<"renamed_file "<<renamed_file<<endl;
+            cout<<"dir "<<dir<<endl;
 
             //Check if there is a file with the same name inside the user dir
             if(!checkFileExistance(pkt.filename.c_str())){
-                cerr<<"File does not exist, delete failed"<<endl;
-                response_pkt.response = 0;  // Delete not possible 
+                cerr<<"File does not exist, rename impossible"<<endl;
+                response_pkt.response = 0; 
                 throw 2;
             }
-            // IMPLEMENT rename on dir
-
-            //FAIL
-            response_pkt.response = 0;
-
-            // SUCCESS 
-            response_pkt.response = 1;
+            else{
+                if(rename( dir.c_str(), renamed_file.c_str() ) != 0 ){
+                    cerr << "Error in renaming the file, rename fails" << endl;
+                    response_pkt.response = 0;
+                    throw 2;
+                }
+                else{
+                    cout << "RENAME SUCCESS on user: " + logged_user + " for file: " + pkt.filename << endl;
+                    response_pkt.response = 1;
+                }
+            }
         }
 
         else if (pkt.simple_op_code == BOOTSTRAP_DELETE){
