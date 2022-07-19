@@ -577,6 +577,7 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
     response_pkt.simple_op_code = pkt.simple_op_code;
     response_pkt.filename_len = strlen(pkt.filename.c_str()); 
     response_pkt.filename = pkt.filename;
+    response_pkt.renamed_filename = pkt.renamed_filename;
     response_pkt.response = 0;
     response_pkt.counter = counter;
 
@@ -681,13 +682,19 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
             }
         }
 
-        if (response_pkt.response == 0 || response_pkt.response == 1){
+        if (response_pkt.simple_op_code == BOOTSTRAP_DELETE){
             // Prepare the plaintext to encrypt
             pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
             + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
             + "$" + to_string(response_pkt.counter) + "$";
         }
-        else if (response_pkt.response == 2){
+        else if (response_pkt.simple_op_code == BOOTSTRAP_RENAME){
+            // Prepare the plaintext to encrypt
+            pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
+            + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + response_pkt.renamed_filename 
+            + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter) + "$";
+        }
+        else if (response_pkt.simple_op_code == BOOTSTRAP_LIST){
             // Prepare the plaintext to encrypt with response_output
             pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
             + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
@@ -705,14 +712,19 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
         if(DEBUG)
             cout << "counter is:" + counter << endl;
 
-        // SEND FAILURE PACKET
-        if (response_pkt.response == 0 || response_pkt.response == 1){
+        if (response_pkt.simple_op_code == BOOTSTRAP_DELETE){
             // Prepare the plaintext to encrypt
             pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
             + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
             + "$" + to_string(response_pkt.counter) + "$";
         }
-        else if (response_pkt.response == 2){
+        else if (response_pkt.simple_op_code == BOOTSTRAP_RENAME){
+            // Prepare the plaintext to encrypt
+            pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
+            + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + response_pkt.renamed_filename 
+            + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter) + "$";
+        }
+        else if (response_pkt.simple_op_code == BOOTSTRAP_LIST){
             // Prepare the plaintext to encrypt with response_output
             pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
             + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 

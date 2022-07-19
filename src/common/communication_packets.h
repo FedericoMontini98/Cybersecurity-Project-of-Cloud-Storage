@@ -1149,7 +1149,7 @@ struct bootstrap_simple_operation{
     uint16_t simple_op_code;
     uint32_t filename_len;
     string filename;
-    string renamed_filename;
+    string renamed_filename = "--";
     uint32_t response; // 0: operation not allowed, 1: operation allowed, 2: operation allowed and response_output available
     uint32_t counter;
 
@@ -1162,7 +1162,6 @@ struct bootstrap_simple_operation{
         string delimiter = "$";
         unsigned int pos;
 
-        cout << "a" << endl;
         //Extract the code
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -1185,8 +1184,6 @@ struct bootstrap_simple_operation{
             s.erase(0, pos + delimiter.length());
         }
 
-        cout << "b" << endl;
-
         //Extract the filename length
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -1195,16 +1192,12 @@ struct bootstrap_simple_operation{
             s.erase(0, pos + delimiter.length());
         }
 
-        cout << "c" << endl;
-
         // Extract the filename
         pos = s.find(delimiter);
         if(pos!=string::npos){
             filename = s.substr(0, pos);
             s.erase(0, pos + delimiter.length());
         }
-
-        cout << "d" << endl;
 
         if(simple_op_code == BOOTSTRAP_RENAME){
         
@@ -1215,8 +1208,6 @@ struct bootstrap_simple_operation{
                 s.erase(0, pos + delimiter.length());
             }
         }
-
-        cout << "e" << endl;
         
         // Extract the response
         pos = s.find(delimiter);
@@ -1226,8 +1217,6 @@ struct bootstrap_simple_operation{
             s.erase(0, pos + delimiter.length());
         }
 
-        cout << "f" << endl;
-
         // Extract the counter
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -1236,8 +1225,6 @@ struct bootstrap_simple_operation{
             s.erase(0, pos + delimiter.length());
         }
 
-        cout << "g" << endl;
-
         // Check if the packet have additional data on response output and extract its data
         if (response == 2){
             pos = s.find(delimiter);
@@ -1245,8 +1232,6 @@ struct bootstrap_simple_operation{
             response_output = i;
             s.erase(0, pos + delimiter.length());
         }
-
-        cout << "h" << endl;
 
         free(serialized_decrypted_pkt);
         return true;
