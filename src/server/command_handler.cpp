@@ -158,9 +158,10 @@ bool Worker::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
 	    cout << "Number of chunks: " << num_chunks << endl << endl;
 
 	//opening file on disk
-	ofstream file(path, ios::out|ios::binary);
-	if(!file.is_open()){
+	ofstream file(path, std::ofstream::binary);
+	if(file.fail()){
 		cerr << "error opening the file\n";
+        return false;
 	}
     //Prepare the buffer
     unsigned char* buffer;
@@ -174,7 +175,7 @@ bool Worker::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
 	for(uint32_t i = 0; i < num_chunks; ++i){
         //Receive the message
         unsigned char* plaintxt;
-        plaintxt = receive_decrypt_and_verify_HMAC();
+        plaintxt = receive_decrypt_and_verify_HMAC_for_files();
         file_upload pkt;
     
         if(plaintxt == nullptr){
@@ -207,13 +208,12 @@ bool Worker::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
             return -2;
         }
 
-        //copying chunk on disk
-		file.seekp(i*FILE_FRAGMENTS_SIZE, ios::beg);
-		int remaining = size - i*FILE_FRAGMENTS_SIZE;
-		size_t byte_to_write = min(FILE_FRAGMENTS_SIZE, remaining);
-		file.write((const char*)pkt.msg, byte_to_write);
-
-
+		if(!file.write((const char*)pkt.msg, pkt.msg_len)){
+            cerr<<"Error during file write"<<endl;
+            return -2;
+        }
+        free(pkt.msg);
+        pkt.msg = nullptr;
         memset(buffer,0,FILE_FRAGMENTS_SIZE);
         counter++;
     }
@@ -517,8 +517,6 @@ int Worker::download(bootstrap_download pkt){
 
     cout<<"***************************************************************************************"<<endl;
     cout<<"************************ THE DOWNLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
-
-    return 0;
 
     return 0;
 }

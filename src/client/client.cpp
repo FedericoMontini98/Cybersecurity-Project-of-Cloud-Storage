@@ -57,6 +57,7 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
     unsigned char*  MACStr;
     unsigned char* HMAC;
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    memset(MACStr, 0 , IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
     memcpy(MACStr + 16,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
 
@@ -117,13 +118,91 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
         ciphertext = nullptr;
         return false;
     }
-
+    cout<<"cipherlen: "<<cipherlen<<endl;
 	// Get the HMAC
     uint32_t MAC_len; 
     unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
     unsigned char* HMAC;
     memcpy(MACStr,this->iv, IV_LENGTH);
     memcpy(MACStr + 16,ciphertext,cipherlen);
+
+	//Initialization of the data to serialize
+    pkt.ciphertext = (const char*)ciphertext;
+    pkt.cipher_len = cipherlen;
+    pkt.iv = this->iv;
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
+    pkt.HMAC = HMAC;
+
+    unsigned char* data;
+    int data_length;
+
+    data = (unsigned char*)pkt.serialize_message(data_length);
+
+    if(data == nullptr){
+        free(MACStr);
+        MACStr = nullptr;
+        free(ciphertext);
+        ciphertext = nullptr;
+        free(pkt.HMAC);
+        pkt.HMAC = nullptr;
+
+        cerr<<"Error during serialization"<<endl;
+        return false;
+    }
+
+    //Send the first message
+    if(!send_message((void *)data, data_length)){
+        cout<<"Error during packet #1 forwarding"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(ciphertext);
+        ciphertext = nullptr;
+        free(pkt.HMAC);
+        pkt.HMAC = nullptr;
+        free(data);
+        data = nullptr;
+        return false;
+    }
+    free(MACStr);
+    MACStr = nullptr;
+    free(ciphertext);
+    ciphertext = nullptr;
+    free(pkt.HMAC);
+    pkt.HMAC = nullptr;
+    free(data);
+    data = nullptr;
+	return true;
+}
+
+/**
+ * @brief Encrypt the plaintext and fill a generic packet to send through the socket REDEFINITION FOR FILE TRANSFER
+ * 
+ * @param buffer : plaintext to encrypt
+ * @return true : the crypted msg has been sent successfully
+ * @return false : error during packet preparation or during the send
+ */
+bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
+	// Generic Packet
+	generic_message pkt;
+
+	unsigned char* ciphertext;
+    int cipherlen;
+	// Encryption
+    if(cbc_encrypt_fragment((unsigned char*)buffer, msg_len, ciphertext, cipherlen, true)!=0){
+        cout<<"Error during encryption"<<endl;
+        free(ciphertext);
+        ciphertext = nullptr;
+        return false;
+    }
+
+	// Get the HMAC
+    uint32_t MAC_len; 
+    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    unsigned char* HMAC;
+    memcpy(MACStr,this->iv, IV_LENGTH);
+    memcpy(MACStr + IV_LENGTH,ciphertext,cipherlen);
+
+    cout<<"cipherlen + IV_LEN"<< IV_LENGTH + cipherlen <<endl;
 
 	//Initialization of the data to serialize
     pkt.ciphertext = (const char*)ciphertext;
@@ -441,7 +520,7 @@ int Client::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char
 
     EVP_CIPHER_CTX* ctx;
 	
-	if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
+	if (msg_len == 0 || msg_len > MAX_PKT_SIZE) {
         cerr << "message length is not allowed: " << msg_len << endl;
         return -1;
     }
@@ -534,7 +613,7 @@ int Client::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
 
     EVP_CIPHER_CTX* ctx;
 	
-    if (cipherlen == 0 || cipherlen > FILE_FRAGMENTS_SIZE) {
+    if (cipherlen == 0 || cipherlen > MAX_PKT_SIZE) {
         cerr << "ERR: input cipher len not allowed" << endl;
         return -1;
     }
@@ -639,16 +718,16 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
     if(DEBUG){
         cout << "Number of chunks: " << num_chunk_to_send << endl << endl;
     }
-    cout<<"MALLOC"<<endl;
+
     unsigned char* buffer = (unsigned char*)malloc(FILE_FRAGMENTS_SIZE);
-    cout<<"MALLOC END"<<endl;
+
     if(!buffer){            
         cerr << "ERR: cannot allocate a buffer for the file fragment" << endl;
         return -1;
     }
-    cout<<"MEMSET #1"<<endl;
+
     memset(buffer,0,FILE_FRAGMENTS_SIZE);
-    cout<<"MEMSET #1 END"<<endl;
+
     int ret;
     //Start to send the chunks
     for(size_t i = 0; i < num_chunk_to_send; ++i){
@@ -663,6 +742,7 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
 
         ret = fread(buffer,1, to_send, file);
 
+        cout<<"read: "<<ret<<" bytes"<<endl;
         if ( ferror(file) != 0 ){
             std::cerr << "ERR: file reading error occured" << endl;
             return -1;
@@ -673,12 +753,27 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
         pkt.code = FILE_UPLOAD;
         pkt.counter = counter;
         pkt.msg_len = ret;
-        pkt.msg = (unsigned char*)buffer;
+        pkt.msg = buffer;
 
-        string to_encrypt = to_string(pkt.code) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.msg_len) + "$" + reinterpret_cast<char*>(pkt.msg);
- 
+        uint8_t* to_encrypt = (uint8_t*)malloc(sizeof(pkt.code) + sizeof(pkt.counter) + sizeof(pkt.msg_len) + ret);
+        if(to_encrypt == nullptr){
+            cerr<<"Failed malloc of to_encrypt"<<endl;
+            return -1;
+        }
+        uint32_t cnt = 0;
+        memcpy(to_encrypt,&pkt.code,sizeof(pkt.code));
+        cnt += sizeof(pkt.code);
+
+        memcpy(to_encrypt + cnt ,&pkt.counter,sizeof(pkt.counter));
+        cnt += sizeof(pkt.counter);
+
+        memcpy(to_encrypt + cnt ,&pkt.msg_len,sizeof(pkt.msg_len));
+        cnt += sizeof(pkt.msg_len);
+
+        memcpy(to_encrypt + cnt ,buffer,ret);
+
         //Send the fragment
-        if(!encrypt_generate_HMAC_and_send(to_encrypt)){
+        if(!encrypt_generate_HMAC_and_send(to_encrypt, ret)){
             cerr<<"Error during encrypt_generate_HMAC_and_send of fragment n°"<<i+1<<endl;
             return -1;
         }
@@ -707,9 +802,10 @@ bool Client::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
 	    cout << "Number of chunks: " << num_chunks << endl << endl;
 
 	//opening file on disk
-	ofstream file(path, ios::out|ios::binary);
-	if(!file.is_open()){
+	ofstream file(path, std::ofstream::binary);
+	if(file.fail()){
 		cerr << "error opening the file\n";
+        return false;
 	}
     //Prepare the buffer
     unsigned char* buffer;
@@ -756,13 +852,12 @@ bool Client::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
             return -2;
         }
 
-        //copying chunk on disk
-		file.seekp(i*FILE_FRAGMENTS_SIZE, ios::beg);
-		int remaining = size - i*FILE_FRAGMENTS_SIZE;
-		size_t byte_to_write = min(FILE_FRAGMENTS_SIZE, remaining);
-		file.write((const char*)pkt.msg, byte_to_write);
-
-
+		if(!file.write((const char*)pkt.msg, pkt.msg_len)){
+            cerr<<"Error during file write"<<endl;
+            return -2;
+        }
+        free(pkt.msg);
+        pkt.msg = nullptr;
         memset(buffer,0,FILE_FRAGMENTS_SIZE);
         counter++;
     }
@@ -919,7 +1014,7 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 int Client::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen){
 	
 	// hmac_util.cpp
-	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, FILE_FRAGMENTS_SIZE);
+	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, MAX_PKT_SIZE);
 
 }
 
