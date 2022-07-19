@@ -95,7 +95,7 @@ unsigned char* key, uint32_t max_msg_size){
             throw 1;
         }
 
-        ctx = HMAC_CTX_new();;
+        ctx = HMAC_CTX_new();
 
         if (!ctx){
             cerr << "context definition failed" << endl;
@@ -149,23 +149,24 @@ int hash_symmetric_key(unsigned char*& symmetric_key, unsigned char* symmetric_k
 	unsigned char* hash;
 	uint32_t len;
 	int ret;
+	int key_size_aes = EVP_CIPHER_key_length(EVP_aes_128_cbc());
 	
-	ret = generate_SHA256_MAC(symmetric_key_no_hashed, 128, hash, len, 128);
+	ret = generate_SHA256_MAC(symmetric_key_no_hashed, key_size_aes, hash, len, key_size_aes);
 	
 	if (ret != 0){
 		cerr << "failed to hash symmetric key" << endl;
 		return ret;
 	}
 	
-	symmetric_key = (unsigned char*) malloc(128); // AES-128
+	symmetric_key = (unsigned char*) malloc(key_size_aes); // AES-128
 	
 	if (symmetric_key == nullptr){
 		cerr << "failed to malloc symmetric key" << endl;
 		return -1;
 	}
 	
-	// take a portion of the mac
-	memcpy(symmetric_key, hash, 128);
+	// take a portion of the mac for 16 byte key (AES)
+	memcpy(symmetric_key, hash, key_size_aes);
 	
 	// free hash
 	free(hash);
@@ -174,28 +175,29 @@ int hash_symmetric_key(unsigned char*& symmetric_key, unsigned char* symmetric_k
 }
 
 
+# define HMAC_KEY_SIZE 32
 // hash hmac key no hash 
 int hash_hmac_key(unsigned char*& hmac_key, unsigned char* hmac_key_no_hashed){
 	unsigned char* hash;
 	uint32_t len;
 	int ret;
 	
-	ret = generate_SHA256_MAC(hmac_key_no_hashed, 128, hash, len, 128);
+	ret = generate_SHA256_MAC(hmac_key_no_hashed, HMAC_KEY_SIZE, hash, len, HMAC_KEY_SIZE);
 	
 	if (ret != 0){
 		cerr << "failed to hash symmetric key" << endl;
 		return ret;
 	}
 	
-	hmac_key = (unsigned char*) malloc(256);
+	hmac_key = (unsigned char*) malloc(HMAC_KEY_SIZE);
 	
 	if (hmac_key == nullptr){
 		cerr << "failed to malloc hmac key" << endl;
 		return -1;
 	}
 	
-	// take the total hash
-	memcpy(hmac_key, hash, 256);
+	// take the total hash for 256
+	memcpy(hmac_key, hash, HMAC_KEY_SIZE);
 	
 	// free hash
 	free(hash);

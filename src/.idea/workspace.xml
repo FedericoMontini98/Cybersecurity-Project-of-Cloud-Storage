@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="f6d82da7-6c9d-4a06-85cd-367c7b2f6f18" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/../.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/../.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../LICENSE" beforeDir="false" afterPath="$PROJECT_DIR$/../LICENSE" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/dryrun.log" beforeDir="false" afterPath="$PROJECT_DIR$/.vscode/dryrun.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/settings.json" beforeDir="false" afterPath="$PROJECT_DIR$/.vscode/settings.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/targets.log" beforeDir="false" afterPath="$PROJECT_DIR$/.vscode/targets.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/client/.vs/VSWorkspaceState.json" beforeDir="false" afterPath="$PROJECT_DIR$/client/.vs/VSWorkspaceState.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/client/client.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/client/client.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/client/client.h" beforeDir="false" afterPath="$PROJECT_DIR$/client/client.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/client/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/client/main.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/client/makefile" beforeDir="false" afterPath="$PROJECT_DIR$/client/makefile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/client/valgrind_output" beforeDir="false" afterPath="$PROJECT_DIR$/client/valgrind_output" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/common/communication_packets.h" beforeDir="false" afterPath="$PROJECT_DIR$/common/communication_packets.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/common/errors.h" beforeDir="false" afterPath="$PROJECT_DIR$/common/errors.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/common/hashing/hashing_util.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/common/hashing/hashing_util.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/common/hashing/hashing_util.h" beforeDir="false" afterPath="$PROJECT_DIR$/common/hashing/hashing_util.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/common/utility.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/common/utility.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/common/utility.h" beforeDir="false" afterPath="$PROJECT_DIR$/common/utility.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/command_handler.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/server/command_handler.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/server/main.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/makefile" beforeDir="false" afterPath="$PROJECT_DIR$/server/makefile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/server.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/server/server.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/server.h" beforeDir="false" afterPath="$PROJECT_DIR$/server/server.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/users.txt" beforeDir="false" afterPath="$PROJECT_DIR$/server/users.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/worker.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/server/worker.cpp" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProjectId" id="2C9TA6fCEJWYg6Iocvgu1AoVcJF" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="f6d82da7-6c9d-4a06-85cd-367c7b2f6f18" name="Changes" comment="" />
+      <created>1658213680373</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1658213680373</updated>
+      <workItem from="1658213701429" duration="24000" />
+    </task>
+    <servers />
+  </component>
+</project>

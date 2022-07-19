@@ -5,6 +5,9 @@
  * 
  * @return the genereted key on success or NULL in the other cases
  */
+ 
+# define DEBUG true
+
 EVP_PKEY* generate_dh_key(){
 	EVP_PKEY* dh_params = nullptr;
     EVP_PKEY_CTX* dh_gen_ctx = nullptr;
@@ -84,7 +87,6 @@ EVP_PKEY* generate_dh_key(){
 unsigned char* derive_shared_secret(EVP_PKEY* this_host_dh_key, EVP_PKEY* other_host_dh_key){
 
 	int ret;
-	unsigned char* key = nullptr;
 
 	// Create a new context for deriving DH key
 	EVP_PKEY_CTX* key_ctx = EVP_PKEY_CTX_new(this_host_dh_key, nullptr);
@@ -384,7 +386,7 @@ unsigned char* sign_message(EVP_PKEY* prvkey, const unsigned char* msg, const si
 		}
 
 		signature_len = EVP_PKEY_size(prvkey);
-		signature = (unsigned char*)malloc(signature_len);
+		signature = (unsigned char*) malloc(signature_len);
 		if (!signature) {
 			cerr << "error in signature malloc" << endl;
 			throw 4;
@@ -405,6 +407,16 @@ unsigned char* sign_message(EVP_PKEY* prvkey, const unsigned char* msg, const si
 		}
 		return nullptr;
 	}
+	
+	// DEBUG, print signature 
+    if (DEBUG) {
+        cout << "signature_len: " << signature_len << endl;
+        cout << "signature: ";
+        for (int i = 0; i < 1; i++){
+            std::cout << static_cast<unsigned int>(signature[0]) << std::flush;
+        }
+        cout << endl;
+    }
 	
 	EVP_MD_CTX_free(ctx);
 	EVP_PKEY_free(prvkey);
@@ -444,6 +456,7 @@ int verify_signature(EVP_PKEY* pubkey, const unsigned char* signature, const siz
 		}
 		
 		ret = EVP_VerifyFinal(ctx, signature, signature_len, pubkey);
+
 		if (ret != 1) {
 			cerr << "error in verify final for signature" << endl;
 			throw 4;
@@ -461,3 +474,75 @@ int verify_signature(EVP_PKEY* pubkey, const unsigned char* signature, const siz
 	return 0;
 }
 
+int validate_certificate(X509* CA_cert, X509_CRL* crl, X509* cert_to_verify) {
+	int ret = 0;
+	X509_STORE* store = nullptr;
+	X509_STORE_CTX* ctx = nullptr;
+
+	try {
+		// allocate store
+		store = X509_STORE_new();
+		if (!store) {
+			cerr << "failed to create a new store" << endl;
+			throw 0;
+		}
+		// add CA_cert to store
+		ret = X509_STORE_add_cert(store, CA_cert);
+		if (ret != 1) {
+			cerr << "failed to add ca certificate to store" << endl;
+			throw 1;
+		}
+		// add crl to store
+		ret = X509_STORE_add_crl(store, crl);
+		if (ret != 1) {
+			cerr << "failed to add crl to store" << endl;
+			throw 1;
+		}
+		// set flags
+		ret = X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK);
+		if (ret != 1) {
+			cerr << "failed to set flags to store" << endl;
+			throw 1;
+		}
+
+		//check validity
+		ctx = X509_STORE_CTX_new();
+		if (!ctx) {
+			cerr << "failed to create a new context for store" << endl;
+			throw 2;
+		}
+		ret = X509_STORE_CTX_init(ctx, store, cert_to_verify, NULL);
+		if (ret != 1) {
+			cerr << "failed to initialize store context" << endl;
+			throw 2;
+		}
+		ret = X509_verify_cert(ctx);
+		if (ret != 1) {
+			cerr << "failed to verify certificate" << endl;
+			cerr << ERR_error_string(ERR_get_error(), NULL) << endl;
+			throw 2;
+		}
+
+	} catch (int e) {
+		if (e >= 2) {
+			X509_STORE_CTX_free(ctx);;
+		}
+		if (e >= 1) {
+			X509_STORE_free(store);
+		}
+		return -1;
+	}
+	X509_STORE_CTX_free(ctx);
+	X509_STORE_free(store);
+	return 0;
+}
+
+// secure free
+void secure_free (void* addr, size_t len) 
+{
+	if(len > 0 && addr != nullptr){
+		
+		memset(addr, 0, len);
+		free(addr);
+	}
+}
