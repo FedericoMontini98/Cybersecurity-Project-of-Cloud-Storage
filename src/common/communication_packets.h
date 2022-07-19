@@ -888,12 +888,14 @@ struct end_upload{
             }
             s.erase(0, pos + delimiter.length());
         }
+
         // Extract the response
         pos = s.find(delimiter);
         if(pos!=string::npos){
             response = s.substr(0, pos);
             s.erase(0, pos + delimiter.length());
         }
+ 
         // Extract the counter
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -901,7 +903,7 @@ struct end_upload{
             counter = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
-
+ 
         free(serialized_decrypted_pkt);
         return true;
     }
@@ -1095,9 +1097,8 @@ struct exit_op{
     //plaintext field
     uint16_t code;
     string response;
-    uint32_t counter;
 
-        bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
+    bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
         unsigned int pos;
         string s = (char*)serialized_decrypted_pkt;
         string delimiter = "$";
@@ -1106,8 +1107,8 @@ struct exit_op{
         pos = s.find(delimiter);
         if(pos!=string::npos){
             string i = s.substr(0, pos);
-            code = stoi(i);
-            if(code!=FILE_DL_HS){
+            code = (uint16_t)stoi(i);
+            if(code!=EXIT_OP){
                 return false;
             }
             s.erase(0, pos + delimiter.length());
@@ -1116,13 +1117,6 @@ struct exit_op{
         pos = s.find(delimiter);
         if(pos!=string::npos){
             response = s.substr(0, pos);
-            s.erase(0, pos + delimiter.length());
-        }
-        // Extract the counter
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            counter = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
 

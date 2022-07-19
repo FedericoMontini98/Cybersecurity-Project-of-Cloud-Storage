@@ -365,8 +365,8 @@ int Worker::upload(bootstrap_upload pkt){
     response_pkt.size = 0;
 
     // Prepare the plaintext to encrypt
-    string pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter) + "$" + to_string(response_pkt.size);
-    cout<<pt<<endl;
+    string pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter) + "$" + to_string(response_pkt.size) + "$";
+
     //Send the MSG
     if(!encrypt_generate_HMAC_and_send(pt)){
         cerr<<"Error during MSG#2 send"<<endl;
@@ -435,7 +435,7 @@ int Worker::upload(bootstrap_upload pkt){
     pkt_end_2.counter = counter;
 
     // Prepare the plaintext to encrypt
-    pt =  to_string(pkt_end_2.code) + "$" + pkt_end_2.response + "$" + to_string(pkt_end_2.counter);
+    pt =  to_string(pkt_end_2.code) + "$" + pkt_end_2.response + "$" + to_string(pkt_end_2.counter) + "$";
 
     if(!encrypt_generate_HMAC_and_send(pt)){
         cerr<<"Error during encrypt_generate_HMAC_and_send of MSG#5"<<endl;

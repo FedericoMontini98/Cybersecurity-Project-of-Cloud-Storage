@@ -1111,7 +1111,6 @@ EVP_PKEY* Client::generate_sts_key_param(){
 	return generate_dh_key();
 }
 
-
 // initialize session socket
 bool Client::init_socket(){
     // ipv4 + tcp
@@ -1469,7 +1468,7 @@ int Client::upload(string username){
         pkt.size = size_file;
 
         // Prepare the plaintext to encrypt
-        string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size);
+        string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size) + "$";
 
         if(!encrypt_generate_HMAC_and_send(buffer)){
             cerr<<"Error during encryption and send of MSG#1 of Upload"<<endl;
@@ -1486,7 +1485,7 @@ int Client::upload(string username){
 
         if(plaintxt == nullptr){
             cerr<<"Error during receive_decrypt_and_verify_HMAC of MSG#2"<<endl;
-            throw 1;   //SOMETHING WRONG DURING RECEIVE, SEND AN END OF OPERATION MESSAGE
+            return -1;   //SOMETHING WRONG DURING RECEIVE, SEND AN END OF OPERATION MESSAGE
         }
 
         // Expected packet type
@@ -1544,7 +1543,7 @@ int Client::upload(string username){
         pkt_end_1.counter = counter;
 
         // Prepare the plaintext to encrypt
-        buffer =  to_string(pkt_end_1.code) + "$" + pkt_end_1.response + "$" + to_string(pkt_end_1.counter);
+        buffer =  to_string(pkt_end_1.code) + "$" + pkt_end_1.response + "$" + to_string(pkt_end_1.counter) + "$";
 
         if(!encrypt_generate_HMAC_and_send(buffer)){
             cerr<<"Error during encryption and send of MSG#4 of Upload"<<endl;
@@ -1554,12 +1553,12 @@ int Client::upload(string username){
         cout<<"***********************************************"<<endl;
         /***************************************************************************************/
         // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 5 ******************** //
-
+  
         plaintxt = receive_decrypt_and_verify_HMAC();
 
         if(plaintxt == nullptr){
             cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
-            throw 1;  //SOMETHING WRONG DURING EOF HS RECEIVE, SEND AN END OF OPERATION MESSAGE
+            return -1;  //SOMETHING WRONG DURING EOF HS RECEIVE, SEND AN END OF OPERATION MESSAGE
         }
 
         end_upload pkt_end_2;
@@ -1567,7 +1566,7 @@ int Client::upload(string username){
         //Parsing and pkt parameters setting, it also FREE(plaintxt)
         if(!pkt_end_2.deserialize_plaintext(plaintxt)){
             cerr<<"Received wrong message type!"<<endl;
-            return -1;
+            return -1;  //WRONG MESSAGE TYPE IS ERROR_PKT
         }
 
         if(DEBUG){
@@ -1596,7 +1595,19 @@ int Client::upload(string username){
         if(errorCode == 10){
             return -3;
         }
-        
+        if(errorCode == 1){
+            exit_op pkt_exit;
+            pkt_exit.response = "FAILED";
+            pkt_exit.code = EXIT_OP;
+
+            string buffer = to_string(pkt_exit.code) + "$" + pkt_exit.response + "$";
+
+            if(!encrypt_generate_HMAC_and_send(buffer)){
+                cerr<<"Sending of err msg failed"<<endl;
+                return -4;
+            }
+        }
+
     }
     cout<<"***************************************************************************************"<<endl;
     cout<<"************************ THE UPLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
@@ -1611,157 +1622,177 @@ int Client::upload(string username){
  * @return int : 0 => success, !=0 => failure
  */
 int Client::download(string username){
-    uint32_t counter = 0;
+    try{
+        uint32_t counter = 0;
 
-    cout<<"**************************************************"<<endl;
-    cout<<"Which file do you want to download from the cloud?"<<endl;
-    cout<<"**************************************************"<<endl<<endl;
+        cout<<"**************************************************"<<endl;
+        cout<<"Which file do you want to download from the cloud?"<<endl;
+        cout<<"**************************************************"<<endl<<endl;
 
-    string filename;
-    cin>>filename;
+        string filename;
+        cin>>filename;
 
-    if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
-        std::cerr << "ERR: command check on whitelist fails"<<endl;
-        std::cerr << "*************************************"<<endl<<endl;
-        return -1;
+        if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+            std::cerr << "ERR: command check on whitelist fails"<<endl;
+            std::cerr << "*************************************"<<endl<<endl;
+            return -1;
+        }
+
+        if(file_exists_to_download(filename, username)!=0){
+            std::cerr << "ERR: file already inside download dir"<<endl;
+            std::cerr << "*************************************"<<endl<<endl;
+            return -1;
+        }
+
+        /****************************************************************************************/
+        /************** Phase 1: send filename and other initialization parameters **************/
+
+        //Check if on server side there is a file with the same name
+        //Packet initialization
+        bootstrap_download pkt;
+        pkt.code = BOOTSTRAP_DOWNLOAD;
+        pkt.filename_len = strlen(filename.c_str());
+        pkt.filename = filename;
+        pkt.counter = counter;
+        pkt.size = 0;
+
+        // Prepare the plaintext to encrypt
+        string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size) + "$";
+
+        if(!encrypt_generate_HMAC_and_send(buffer)){
+            cerr<<"Error during encryption and send of MSG#1 of Upload"<<endl;
+            throw 1;
+        }
+
+        counter++;
+
+        /****************************************************************************************/
+
+        //Receive the message, check the HMAC validity and decrypt the ciphertext
+        unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
+
+        if(plaintxt == nullptr){
+            cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
+            cerr << "*************************************"<<endl<<endl;
+            return -2;
+        }
+
+        // Expected packet type
+        bootstrap_download rcvd_pkt;
+
+        //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
+        if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
+            cerr<<"Received wrong message type!"<<endl;
+            cerr << "*************************************"<<endl<<endl;
+            return -1;
+        }
+
+        if(DEBUG){
+            cout<<"You received the following cripted message: "<<endl;
+            cout<<"Code: "<<rcvd_pkt.code<<";\n filename_len:"<<rcvd_pkt.filename_len<<";\n filename:"<<rcvd_pkt.filename<<";\n counter:"<<rcvd_pkt.counter<<";\n size: "<<rcvd_pkt.size<<endl;
+        }
+        // Check on rcvd packets values
+        if( rcvd_pkt.counter != counter ){
+            cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
+            cerr << "*************************************"<<endl<<endl;
+            throw 1;
+        }
+        // Check the response of the server
+        if( rcvd_pkt.size == 0){
+            cerr<<"File not found on the server"<<endl;
+            cerr << "*************************************"<<endl<<endl;
+            return -2;
+        }
+        
+        counter++;
+        // If the size is != 0 the server is now ready to send the file 
+
+        /**************************************************************************************************/
+        // ******************************* PHASE 2 RECEIVE THE FILE: MSG 3 ****************************** //
+
+        cout<<"***********************************************"<<endl;
+        cout<<"*********HANDLE FILE TRANSFER PHASE************"<<endl;
+        cout<<"***********************************************"<<endl;
+
+
+        if(!encrypted_file_receive(rcvd_pkt.size, filename, counter)){
+            cerr<<"Phase 2 failed: error during file upload"<<endl;
+            return -3;
+        }
+
+        cout<<"***********************************************"<<endl;
+        cout<<"********FILE TRANSFER PHASE COMPLETED**********"<<endl;
+        cout<<"***********************************************"<<endl;
+
+        /**************************************************************************************************/
+        // ********************************* PHASE 3 FILE EOF HS : MSG 4 ******************************** //
+
+        end_download pkt_end_1;
+
+        plaintxt = receive_decrypt_and_verify_HMAC();
+
+        if(plaintxt == nullptr){
+            cerr<<"Error during receive_decrypt_and_verify_HMAC for MSG#4"<<endl;
+            return -4;
+        }
+
+        //Parsing and pkt parameters setting, it also free 'plaintxt'
+        if(!pkt_end_1.deserialize_plaintext(plaintxt)){
+            cerr<<"Received wrong message type!"<<endl;
+            return -4;
+        }
+
+        if(DEBUG){
+            cout<<"You received the following cripted message: "<<endl;
+            cout<<"Code: "<<pkt_end_1.code<<";\n filename:"<<pkt_end_1.response<<";\n counter:"<<pkt_end_1.counter<<endl;
+        }
+
+        // Check on rcvd packets values
+        if( pkt_end_1.counter != counter ){
+            cerr<<"Wrong counter value, we received: "<<pkt_end_1.counter<<" instead of: "<<counter<<endl;
+            throw 1;
+        }
+        // Check the response of the server
+        if(strcmp(pkt_end_1.response.c_str(),"END") != 0){
+            cerr<<"There was a problem during the finalization of the upload!"<<endl;
+            throw 1;
+        }
+
+        counter++;
+
+        /*******************************************************************************/
+        /**************************** LAST MESSAGE *************************************/
+
+        end_download pkt_end_2;
+        pkt_end_2.code = FILE_DL_HS;
+        pkt_end_2.response = "OK";
+        pkt_end_2.counter = counter;
+
+        // Prepare the plaintext to encrypt
+        buffer =  to_string(pkt_end_2.code) + "$" + pkt_end_2.response + "$" + to_string(pkt_end_2.counter) + "$";
+
+        if(!encrypt_generate_HMAC_and_send(buffer)){
+            cerr<<"Error during encrypt_generate_HMAC_and_send of MSG#5"<<endl;
+            return -5;
+        }
     }
+    catch(int errorCode){
+        cout<<"***************************************************************************************"<<endl;
+        cout<<"***************************** THE UPLOAD HAS FAILED ***********************************"<<endl;
 
-    if(file_exists_to_download(filename, username)!=0){
-        std::cerr << "ERR: file already inside download dir"<<endl;
-        std::cerr << "*************************************"<<endl<<endl;
-        return -1;
-    }
+        if(errorCode == 1){
+            exit_op pkt_exit;
+            pkt_exit.response = "FAILED";
+            pkt_exit.code = EXIT_OP;
 
-    /****************************************************************************************/
-    /************** Phase 1: send filename and other initialization parameters **************/
+            string buffer = to_string(pkt_exit.code) + "$" + pkt_exit.response + "$";
 
-    //Check if on server side there is a file with the same name
-    //Packet initialization
-    bootstrap_download pkt;
-    pkt.code = BOOTSTRAP_DOWNLOAD;
-    pkt.filename_len = strlen(filename.c_str());
-    pkt.filename = filename;
-    pkt.counter = counter;
-    pkt.size = 0;
+            if(!encrypt_generate_HMAC_and_send(buffer)){
+                cerr<<"Sending of err msg failed"<<endl;
+                return -4;
+            }
+        }
 
-    // Prepare the plaintext to encrypt
-    string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size);
-
-    if(!encrypt_generate_HMAC_and_send(buffer)){
-        cerr<<"Error during encryption and send of MSG#1 of Upload"<<endl;
-        return -1;
-    }
-
-    counter++;
-
-    /****************************************************************************************/
-
-    //Receive the message, check the HMAC validity and decrypt the ciphertext
-    unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
-
-    if(plaintxt == nullptr){
-        cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
-        cerr << "*************************************"<<endl<<endl;
-        return -2;
-    }
-
-    // Expected packet type
-    bootstrap_download rcvd_pkt;
-
-    //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
-    if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
-        cerr<<"Received wrong message type!"<<endl;
-        cerr << "*************************************"<<endl<<endl;
-        return -2;
-    }
-
-    if(DEBUG){
-        cout<<"You received the following cripted message: "<<endl;
-        cout<<"Code: "<<rcvd_pkt.code<<";\n filename_len:"<<rcvd_pkt.filename_len<<";\n filename:"<<rcvd_pkt.filename<<";\n counter:"<<rcvd_pkt.counter<<";\n size: "<<rcvd_pkt.size<<endl;
-    }
-    // Check on rcvd packets values
-    if( rcvd_pkt.counter != counter ){
-        cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
-        cerr << "*************************************"<<endl<<endl;
-        return -2;
-    }
-    // Check the response of the server
-    if( rcvd_pkt.size == 0){
-        cerr<<"File not found on the server"<<endl;
-        cerr << "*************************************"<<endl<<endl;
-        return -2;
-    }
-    
-    counter++;
-    // If the size is != 0 the server is now ready to send the file 
-
-    /**************************************************************************************************/
-    // ******************************* PHASE 2 RECEIVE THE FILE: MSG 3 ****************************** //
-
-    cout<<"***********************************************"<<endl;
-    cout<<"*********HANDLE FILE TRANSFER PHASE************"<<endl;
-    cout<<"***********************************************"<<endl;
-
-
-    if(!encrypted_file_receive(rcvd_pkt.size, filename, counter)){
-        cerr<<"Phase 2 failed: error during file upload"<<endl;
-        return -3;
-    }
-
-    cout<<"***********************************************"<<endl;
-    cout<<"********FILE TRANSFER PHASE COMPLETED**********"<<endl;
-    cout<<"***********************************************"<<endl;
-
-    /**************************************************************************************************/
-    // ********************************* PHASE 3 FILE EOF HS : MSG 4 ******************************** //
-
-    end_download pkt_end_1;
-
-    plaintxt = receive_decrypt_and_verify_HMAC();
-
-    if(plaintxt == nullptr){
-        cerr<<"Error during receive_decrypt_and_verify_HMAC for MSG#4"<<endl;
-        return -4;
-    }
-
-    //Parsing and pkt parameters setting, it also free 'plaintxt'
-    if(!pkt_end_1.deserialize_plaintext(plaintxt)){
-        cerr<<"Received wrong message type!"<<endl;
-        return -4;
-    }
-
-    if(DEBUG){
-        cout<<"You received the following cripted message: "<<endl;
-        cout<<"Code: "<<pkt_end_1.code<<";\n filename:"<<pkt_end_1.response<<";\n counter:"<<pkt_end_1.counter<<endl;
-    }
-
-    // Check on rcvd packets values
-    if( pkt_end_1.counter != counter ){
-        cerr<<"Wrong counter value, we received: "<<pkt_end_1.counter<<" instead of: "<<counter<<endl;
-        return -4;
-    }
-    // Check the response of the server
-    if(strcmp(pkt_end_1.response.c_str(),"END") != 0){
-        cerr<<"There was a problem during the finalization of the upload!"<<endl;
-        return -4;
-    }
-
-    counter++;
-
-    /*******************************************************************************/
-    /**************************** LAST MESSAGE *************************************/
-
-    end_download pkt_end_2;
-    pkt_end_2.code = FILE_DL_HS;
-    pkt_end_2.response = "OK";
-    pkt_end_2.counter = counter;
-
-    // Prepare the plaintext to encrypt
-    buffer =  to_string(pkt_end_2.code) + "$" + pkt_end_2.response + "$" + to_string(pkt_end_2.counter);
-
-    if(!encrypt_generate_HMAC_and_send(buffer)){
-        cerr<<"Error during encrypt_generate_HMAC_and_send of MSG#5"<<endl;
-        return -5;
     }
 
     cout<<"*****************************************************************************************"<<endl;
