@@ -1848,10 +1848,17 @@ int Client::simple_operation(int operation){
     pkt.renamed_filename = renamed_filename;
     pkt.response = 0;
     pkt.counter = counter;
+    string buffer;
 
     // Prepare the plaintext to encrypt
-    string buffer = to_string(pkt.code) + "$" + to_string(pkt.simple_op_code) + "$" + to_string(pkt.filename_len) 
-    + "$" + filename + "$" + renamed_filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+    if (pkt.simple_op_code == BOOTSTRAP_LIST || pkt.simple_op_code == BOOTSTRAP_DELETE) {
+        buffer = to_string(pkt.code) + "$" + to_string(pkt.simple_op_code) + "$" + to_string(pkt.filename_len) 
+        + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+    }
+    else if (pkt.simple_op_code == BOOTSTRAP_RENAME){
+        buffer = to_string(pkt.code) + "$" + to_string(pkt.simple_op_code) + "$" + to_string(pkt.filename_len) 
+        + "$" + filename + "$" + renamed_filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+    }
 
     if(!encrypt_generate_HMAC_and_send(buffer)){
         cerr<<"Error during encryption and send of MSG#1 of Delete"<<endl;

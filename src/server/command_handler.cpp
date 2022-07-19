@@ -593,15 +593,41 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
 
         // filename is -- in this case
         if (pkt.simple_op_code == BOOTSTRAP_LIST){
-            // DO LIST
-
-            // IMPLEMENT
-
-            // FAIL
-            response_pkt.response = 0;
-
-            // SUCCESS (PUT DATA IN response_pkt.response_output)
-            response_pkt.response = 2;
+            // getting the path of a user
+            string path = FILE_PATH + this->logged_user + "/";
+            string files = "";
+            DIR * user_directory;
+            struct dirent *directory_entry;
+            // open the selected directory 
+            if ((user_directory = opendir (path.c_str())) != NULL) {
+                
+                // we scan all the element into the directory
+                while ((directory_entry = readdir (user_directory)) != NULL) {
+                    
+                    // we don't take the . and .. entries
+                    if((strcmp(directory_entry->d_name,".") == 0) || (strcmp(directory_entry->d_name,"..") == 0)){
+                        continue;
+                    }
+                    // we append the name of the files in order to send them to the client
+                    files.append(directory_entry->d_name);
+                    files.append("\n");
+                }
+                closedir(user_directory);
+                // delitin the last \n 
+                files.erase(files.length()-1);
+                // we put the data into the pkt
+                response_pkt.response_output = files;
+                
+                cout<<"files "<<files<<endl;
+                cout<<"response_pkt.response_output "<<response_pkt.response_output<<endl;
+                response_pkt.response = 2;
+                cout << "LIST SUCCESS on user: " + logged_user << endl;
+            } 
+            else {
+                cerr << "Error in listing all the file, list fails" << endl;
+                response_pkt.response = 0;
+                throw 2;
+            }
         }
 
         else if (pkt.simple_op_code == BOOTSTRAP_RENAME){
