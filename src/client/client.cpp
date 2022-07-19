@@ -1943,7 +1943,7 @@ int Client::logout(){
     pkt.counter = counter;
 
     // Prepare the plaintext to encrypt
-    string buffer = to_string(pkt.code) + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+    string buffer = to_string(pkt.code) + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter) + "$";
 
     if(!encrypt_generate_HMAC_and_send(buffer)){
         cerr<<"Error during encryption and send of MSG#1 of Delete"<<endl;
@@ -2003,8 +2003,10 @@ int Client::logout(){
     symmetric_key = nullptr;
     secure_free(hmac_key, hmac_key_length);
     hmac_key = nullptr;
-    EVP_PKEY_free(private_key);
-    private_key = nullptr;
+    if (private_key != nullptr){
+        EVP_PKEY_free(private_key);
+        private_key = nullptr;
+    }
 
     cout << "KEYS FREED CORRECTLY" << endl << endl;
 

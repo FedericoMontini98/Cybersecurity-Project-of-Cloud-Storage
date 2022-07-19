@@ -767,7 +767,7 @@ int Worker::logout (bootstrap_logout pkt){
     int ret = 0;
 
     if(DEBUG){
-        cout<<"Received an simple_operation packet with the following fields: "<<endl;
+        cout<<"Received an logout packet with the following fields: "<<endl;
         cout<<"Code: "<<pkt.code<< "counter:"<< pkt.counter<<"response:"<< pkt.response <<endl;
     }
 
@@ -777,7 +777,7 @@ int Worker::logout (bootstrap_logout pkt){
     response_pkt.counter = counter;
 
     // Prepare the plaintext to encrypt
-    pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter);
+    pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter) + "$";
 
     //Send the feedback message
     if(!encrypt_generate_HMAC_and_send(pt)){
@@ -793,7 +793,7 @@ int Worker::logout (bootstrap_logout pkt){
     EVP_PKEY_free(private_key);
     private_key = nullptr;
 
-    cout << "KEYS FREED CORRECTLY, LOGOUT OF" + logged_user << endl << endl;
+    cout << "KEYS FREED CORRECTLY, LOGOUT OF " + logged_user << endl << endl;
 
     return ret; // 0 feedback sent, -1 feedback not sent
 }

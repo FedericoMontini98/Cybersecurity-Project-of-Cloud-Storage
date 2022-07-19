@@ -1343,7 +1343,7 @@ struct bootstrap_logout{
         if(pos!=string::npos){
             string i = s.substr(0, pos);
             code = stoi(i);
-            if(code!=BOOTSTRAP_SIMPLE_OPERATION){
+            if(code!=BOOTSTRAP_LOGOUT){
                 return false;
             }
             s.erase(0, pos + delimiter.length());
