@@ -131,19 +131,26 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
     uint32_t length_rec;
     
     //Receive the serialized data
-    if(!receive_message(data, length_rec)){
-        cerr << "ERR: some error in receiving MSG2 in upload" << endl;
+    int ret = receive_message(data, length_rec);
+    if(ret!=0){
+        cerr << "ERR: some error in receiving MSG, received error: " << ret<< endl;
 		free(data);
+        data = nullptr;
 		return nullptr;
     }
 
     if(!rcvd_pkt.deserialize_message(data)){
         cerr<<"Error during deserialization of the data"<<endl;
+        free(data);
+        data = nullptr;
         return nullptr;
     }
+    free(this->iv);
+    this->iv = nullptr;
+    this->iv = rcvd_pkt.iv;
 
     uint32_t MAC_len; 
-    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    unsigned char*  MACStr;
     unsigned char* HMAC;
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
@@ -151,12 +158,14 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
 
     //Generate the HMAC on the receiving side iv||ciphertext
     generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
-    //Free
-    free(MACStr);
 
     //HMAC Verification
     if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
         cout<<"HMAC cant be verified, try again"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(rcvd_pkt.HMAC);
+        rcvd_pkt.HMAC = nullptr;
         return nullptr;
     }
 
@@ -169,11 +178,18 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
     //Decrypt the ciphertext and obtain the plaintext
     if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
         cout<<"Error during encryption"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(rcvd_pkt.HMAC);
+        rcvd_pkt.HMAC = nullptr;
         return nullptr;
     }
-
+    free(MACStr);
+    MACStr = nullptr;
     free(HMAC);
+    HMAC = nullptr;
     free(rcvd_pkt.HMAC);
+    rcvd_pkt.HMAC = nullptr;
     return plaintxt;
 }
 
@@ -209,10 +225,9 @@ bool Worker::encrypt_generate_HMAC_and_send(string buffer){
     pkt.iv = this->iv;
     generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
     pkt.HMAC = HMAC;
-
     unsigned char* data;
-    int data_length;
 
+    int data_length;
     data = (unsigned char*)pkt.serialize_message(data_length);
 
     //Send the first message
@@ -223,6 +238,7 @@ bool Worker::encrypt_generate_HMAC_and_send(string buffer){
 		free(pkt.HMAC);
         return false;
     }
+
     free(MACStr);
     free(ciphertext);
     free(pkt.HMAC);
@@ -248,7 +264,7 @@ int Worker::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char
 			cerr << "malloc ciphertext failed" << endl;
 			throw 1;
 		}
-
+		memset(ciphertext,0,msg_len + block_size);
         // context definition
         ctx = EVP_CIPHER_CTX_new();
         if (!ctx) {
@@ -600,7 +616,6 @@ bool Worker::init_session(){
 	unsigned char* hmac_key_no_hashed;
 	unsigned char* plaintext;
 	int plainlen;
-	unsigned char* to_copy;
 	unsigned char* signed_text;
 	int signed_text_len;
 	EVP_PKEY* client_pubk;
@@ -953,10 +968,9 @@ void Worker::run (){
 		
 		/* --ERROR HANDLES-- */
 		
-		// handle command
+		// handle command, it also free recv_buffer
 		handle_command(recv_buffer);
 
-		// the content of the buffer is not needed anymore
-		free(recv_buffer);
+
     }
 }

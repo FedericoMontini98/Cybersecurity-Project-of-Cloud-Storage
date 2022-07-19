@@ -739,6 +739,7 @@ struct bootstrap_upload
         string s = (char*)serialized_decrypted_pkt;
         string delimiter = "$";
         unsigned int pos;
+
         //Extract the code
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -749,6 +750,7 @@ struct bootstrap_upload
             }
             s.erase(0, pos + delimiter.length());
         }
+
         //Extract the filename length
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -756,12 +758,22 @@ struct bootstrap_upload
             filename_len = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
+
         // Extract the filename
         pos = s.find(delimiter);
         if(pos!=string::npos){
             filename = s.substr(0, pos);
             s.erase(0, pos + delimiter.length());
         }
+
+        // Extract the response
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            response = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+
         // Extract the counter
         pos = s.find(delimiter);
         if(pos!=string::npos){
@@ -769,13 +781,12 @@ struct bootstrap_upload
             counter = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
+
         // Extract the size
         pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            filename_len = stoi(i);
-            s.erase(0, pos + delimiter.length());
-        }
+        string i = s.substr(0, pos);
+        size = stoi(i);
+        s.erase(0, pos + delimiter.length());
         free(serialized_decrypted_pkt);
         return true;
     }
@@ -1146,7 +1157,7 @@ struct bootstrap_download
         pos = s.find(delimiter);
         if(pos!=string::npos){
             string i = s.substr(0, pos);
-            counter = stoi(i);
+            size = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
 
