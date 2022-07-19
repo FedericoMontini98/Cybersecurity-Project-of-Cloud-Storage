@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <iostream>
 #include <sys/socket.h>
+#include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <thread>
@@ -43,14 +44,10 @@ class Client{
     // keys
     /* must be freed */
     EVP_PKEY* private_key = nullptr; 
-	
-	//EDIT set to nullptr
-    unsigned char* symmetric_key = (unsigned char*) 
-	"0123456789012345"; 
-	
-	//EDIT set to nullptr
-    unsigned char* hmac_key = (unsigned char*)
-	"01234567890123450123456789012345";
+    unsigned char* symmetric_key = nullptr; 
+    unsigned char* hmac_key = nullptr;
+    int symmetric_key_length = EVP_CIPHER_key_length(EVP_aes_128_cbc());
+    int hmac_key_length = HMAC_KEY_SIZE;
 
     public:
     Client(const uint16_t _port);
@@ -77,6 +74,7 @@ class Client{
     int upload(string username);
     int download(string username);
     int simple_operation(int operation);
+    int logout();
 
     //Utility functions
     uint32_t file_exists(string filename, string username);

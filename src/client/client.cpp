@@ -16,12 +16,11 @@ Client::Client(const uint16_t _port){
 
 // DESTRUCTOR
 Client::~Client(){
-
     // if keys are nullptr frees do nothing
-    EVP_PKEY_free(private_key);
-    //free(symmetric_key); //for testing leave this comment when symmetric_key is a constant
-    free(hmac_key);      
-    free(iv);
+    if (private_key != nullptr) {EVP_PKEY_free(private_key);}
+	if (symmetric_key != nullptr) {secure_free(symmetric_key, symmetric_key_length);}
+    if (hmac_key != nullptr) {secure_free(hmac_key, hmac_key_length);}      
+    if (iv != nullptr) {free(iv);}
 }
 
 /**
@@ -1932,6 +1931,86 @@ int Client::simple_operation(int operation){
     return 0;
 }
 
+int Client::logout(){
+    uint32_t counter = 0;
+    string filename;
+    int ret = 0;
+
+    //Packet initialization
+    bootstrap_logout pkt;
+    pkt.code = BOOTSTRAP_LOGOUT;
+    pkt.response = 0;
+    pkt.counter = counter;
+
+    // Prepare the plaintext to encrypt
+    string buffer = to_string(pkt.code) + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+
+    if(!encrypt_generate_HMAC_and_send(buffer)){
+        cerr<<"Error during encryption and send of MSG#1 of Delete"<<endl;
+        return -2;
+    }
+
+    counter++;
+    cout<<"***********************************************"<<endl;
+
+    /***************************************************************************************/
+    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
+
+    //Receive the message, check the HMAC validity and decrypt the ciphertext
+    unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
+
+    if(plaintxt == nullptr){
+        cerr<<"Error during receive_decrypt_and_verify_HMAC of MSG#2"<<endl;
+        ret = -1;
+    }
+
+    // Expected packet type
+    bootstrap_logout rcvd_pkt;
+
+    //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
+    if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
+        ret = -1;
+    }
+
+    if(DEBUG){
+        cout<<"You received the following cripted message: "<<endl;
+        cout<<"Code: "<<rcvd_pkt.code<<";\n response:"<<rcvd_pkt.response<<";\n counter:"<<rcvd_pkt.counter<<endl;
+    }
+
+    // Check on rcvd packets values
+    if( rcvd_pkt.counter != counter ){
+        cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
+        ret = -1;
+    }
+
+    if(DEBUG){
+        cout<<"Counter with good value"<<endl;
+    }
+
+    // Check the response of the server
+    if( rcvd_pkt.response != 1){
+        cerr << "Send wrong feedback, disconnect anyway" << endl;
+        ret = -1;
+    }
+    
+    if(DEBUG){
+        cout<<"Affirmative response"<<endl;
+    }
+
+    //secure frees
+    secure_free(symmetric_key, symmetric_key_length);
+    symmetric_key = nullptr;
+    secure_free(hmac_key, hmac_key_length);
+    hmac_key = nullptr;
+    EVP_PKEY_free(private_key);
+    private_key = nullptr;
+
+    cout << "KEYS FREED CORRECTLY" << endl << endl;
+
+    return ret;
+}
+
 // retrieve user certificate
 X509* Client::get_certificate() {
 	
@@ -2003,8 +2082,6 @@ X509_CRL* Client::get_crl() {
 	return crl;
 }
 
- 
-
 // RUN
 int Client::run(){
     try {
@@ -2023,7 +2100,7 @@ int Client::run(){
     }
 
     cout<<"======================================="<<endl;
-	cout<<"=            CLIENT AVVIATO           ="<<endl;
+	cout<<"=            CLIENT STARTED           ="<<endl;
 	cout<<"======================================="<<endl<<endl<<endl;
 
     help();
@@ -2060,17 +2137,14 @@ int Client::run(){
         }
         if(!strcmp(command_chars,"list")){
             state = 3;
-            simple_operation(BOOTSTRAP_LIST);
             //cout<<"sei dentro list"<<endl;
         }
         if(!strcmp(command_chars,"rename")){
             state = 4;
-            simple_operation(BOOTSTRAP_RENAME);
             //cout<<"sei dentro rename"<<endl;
         }
         if(!strcmp(command_chars,"delete")){
             state = 5;
-            simple_operation(BOOTSTRAP_DELETE);
             //cout<<"sei dentro delete"<<endl;
         }
         if(!strcmp(command_chars,"logout")){
@@ -2092,20 +2166,20 @@ int Client::run(){
                 continue;
 
             case 3:
-                //list();
+                simple_operation(BOOTSTRAP_LIST);
                 continue;
 
             case 4:
-                //rename(words[1],words[2]);
+                simple_operation(BOOTSTRAP_RENAME);
                 continue;
 
             case 5:
-                //delete(words[1]);
+                simple_operation(BOOTSTRAP_DELETE);
                 continue;
 
             case 6:
-                //logout();
-                continue;
+                logout();
+                break;
 
             case -1:
                 cout<<"Wrong command, check and try again"<<endl;
@@ -2115,9 +2189,16 @@ int Client::run(){
 
         //Clean the command string once the state is chosen
         words.erase(words.begin(),words.end());
+        
         //Clear the cin flag
         cin.clear();
     }
+
+    cout<<"==============================="<<endl;
+	cout<<"=            LOGOUT           ="<<endl;
+	cout<<"==============================="<<endl<<endl<<endl;
+
+    close(session_socket);
 }
 
 // TESTS

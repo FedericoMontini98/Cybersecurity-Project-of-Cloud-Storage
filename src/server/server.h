@@ -1,4 +1,5 @@
 #include <sys/socket.h>
+#include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <openssl/rand.h>
@@ -57,6 +58,10 @@ class Worker {
     // keys
     /* must be freed */
     EVP_PKEY* private_key = nullptr; // contain a copy of the private_key of the server
+    unsigned char* symmetric_key = nullptr;
+	unsigned char* hmac_key = nullptr;
+    int symmetric_key_length = EVP_CIPHER_key_length(EVP_aes_128_cbc());
+    int hmac_key_length = HMAC_KEY_SIZE;
 	
     /*//EDIT set to nullptr
     unsigned char* symmetric_key = (unsigned char*) 
@@ -65,9 +70,6 @@ class Worker {
 	//EDIT set to nullptr
     unsigned char* hmac_key = (unsigned char*)
 	"01234567890123450123456789012345";*/
-	
-	unsigned char* symmetric_key = nullptr;
-	unsigned char* hmac_key = nullptr;
 
     public:
 
@@ -95,6 +97,8 @@ class Worker {
     int upload(bootstrap_upload pkt);
     int download(bootstrap_download pkt);
     int simple_operation(bootstrap_simple_operation pkt); //rename, list, delete
+    int logout (bootstrap_logout pkt_logout);
+
 
     //Utility function
     unsigned char* receive_decrypt_and_verify_HMAC();

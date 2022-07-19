@@ -10,10 +10,10 @@ Worker::Worker (Server* server, const int socket, const sockaddr_in addr){
 
 Worker::~Worker(){
     // if keys are nullptr frees do nothing
-    EVP_PKEY_free(private_key);
-    //free(symmetric_key); //for testing leave this comment when symmetric_key is a constant
-    free(hmac_key);      
-    free(iv);
+    if (private_key != nullptr) {EVP_PKEY_free(private_key);}
+	if (symmetric_key != nullptr) {secure_free(symmetric_key, symmetric_key_length);}
+    if (hmac_key != nullptr) {secure_free(hmac_key, hmac_key_length);}      
+    if (iv != nullptr) {free(iv);}
 }
 
 // generate HMAC digest of a fragment (FILE_FRAGMENTS_SIZE)
@@ -1127,6 +1127,7 @@ X509_CRL* Worker::get_crl() {
 void Worker::run (){
 	unsigned char* recv_buffer;
 	uint32_t len;
+	int ret;
 	
 	// load private server key
 	if (!load_private_server_key()){
@@ -1141,19 +1142,18 @@ void Worker::run (){
 		
 		// wait for commands
         int ret = receive_message(recv_buffer, len);
-		
-		/* --ERROR HANDLES-- */
 
         // CLIENT DISCONNECTED
         if (ret == -2){
             exit(EXIT_FAILURE);
         }
 		
-		/* --ERROR HANDLES-- */
-		
 		// handle command, it also free recv_buffer
-		handle_command(recv_buffer);
+		ret = handle_command(recv_buffer);
 
+		if (ret == BOOTSTRAP_LOGOUT){
+			break;
+		}
 
     }
 }

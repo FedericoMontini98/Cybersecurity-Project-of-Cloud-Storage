@@ -5,6 +5,9 @@ using namespace std;
 void new_worker_thread(Server* server, const int socket, const sockaddr_in addr){
     Worker worker = Worker(server, socket, addr);
     worker.run();
+
+    // finish run and close socket
+    close(socket);
 }
 
 int main(int argc, char** argv) {

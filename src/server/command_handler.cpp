@@ -94,7 +94,14 @@ int Worker::handle_command(unsigned char* received_mes) {
             /**************************************************************************************/
             case BOOTSTRAP_LOGOUT:
             {
-                return 0;
+                bootstrap_logout pkt_logout;
+                //Parsing and pkt parameters setting, it also free 'plaintxt'
+                if(!pkt_logout.deserialize_plaintext(plaintxt)){
+                    cerr<<"Received wrong message type!"<<endl;
+                    throw 0;
+                }
+                int ret = logout(pkt_logout);
+                return BOOTSTRAP_LOGOUT;
             }
             /**************************************************************************************/
         }
@@ -753,4 +760,40 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
 }
 
 
+int Worker::logout (bootstrap_logout pkt){
+    uint32_t counter = pkt.counter;
+    bootstrap_simple_operation response_pkt;
+    string pt;
+    int ret = 0;
 
+    if(DEBUG){
+        cout<<"Received an simple_operation packet with the following fields: "<<endl;
+        cout<<"Code: "<<pkt.code<< "counter:"<< pkt.counter<<"response:"<< pkt.response <<endl;
+    }
+
+    counter = counter + 1;
+    response_pkt.code = BOOTSTRAP_LOGOUT;
+    response_pkt.response = 1;
+    response_pkt.counter = counter;
+
+    // Prepare the plaintext to encrypt
+    pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.response) + "$" + to_string(response_pkt.counter);
+
+    //Send the feedback message
+    if(!encrypt_generate_HMAC_and_send(pt)){
+        cerr<<"Error during MSG#2 send"<<endl;
+        ret = -1;
+    }
+
+    //secure frees
+    secure_free(symmetric_key, symmetric_key_length);
+    symmetric_key = nullptr;
+    secure_free(hmac_key, hmac_key_length);
+    hmac_key = nullptr;
+    EVP_PKEY_free(private_key);
+    private_key = nullptr;
+
+    cout << "KEYS FREED CORRECTLY, LOGOUT OF" + logged_user << endl << endl;
+
+    return ret; // 0 feedback sent, -1 feedback not sent
+}
