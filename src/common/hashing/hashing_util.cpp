@@ -95,7 +95,7 @@ unsigned char* key, uint32_t max_msg_size){
             throw 1;
         }
 
-        ctx = HMAC_CTX_new();;
+        ctx = HMAC_CTX_new();
 
         if (!ctx){
             cerr << "context definition failed" << endl;
