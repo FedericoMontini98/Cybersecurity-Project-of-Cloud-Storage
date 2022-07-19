@@ -500,10 +500,16 @@ EVP_PKEY* Worker::generate_sts_key_param(){
  * @return true if the user is registered, and false otherwise 
  */
 bool Worker::check_username(string username){
-	
 	ifstream file("users.txt");
     vector<string> users;
     string str;
+	
+	if (username.find_first_not_of(USERNAME_WHITELIST_CHARS) != std::string::npos)
+    {
+        std::cerr << "ERR: username check on whitelist fails"<<endl;
+        return false;
+    }
+
     while (getline(file, str)) {
 		int len = strlen(str.c_str()) - 1 ;
         str = str.substr(0,len);
@@ -642,7 +648,12 @@ bool Worker::init_session(){
 		if (!bootstrap_pkt.deserialize_message(receive_buffer)){
 			cerr << "ERR: some error in deserialize login_bootstrap_pkt" << endl;
 			free(receive_buffer);
-			bootstrap_pkt.free_pointers();
+			if (bootstrap_pkt.symmetric_key_param != nullptr ){
+				EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+			}
+			if (bootstrap_pkt.hmac_key_param != nullptr ){
+				EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+			}
 			continue;
 		}
 		
@@ -650,7 +661,12 @@ bool Worker::init_session(){
 		if (!check_username(bootstrap_pkt.username)){
 			cerr << "ERR: username "+bootstrap_pkt.username+ " is not registered" << endl;
 			free(receive_buffer);
-			bootstrap_pkt.free_pointers();
+			if (bootstrap_pkt.symmetric_key_param != nullptr ){
+				EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+			}
+			if (bootstrap_pkt.hmac_key_param != nullptr ){
+				EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+			}
 			return false;
 		}
 		
@@ -658,7 +674,12 @@ bool Worker::init_session(){
 		if (bootstrap_pkt.symmetric_key_param == nullptr || bootstrap_pkt.hmac_key_param == nullptr){
 			cerr << "ERR: one of the key params is not valid" << endl;
 			free(receive_buffer);
-			bootstrap_pkt.free_pointers();
+			if (bootstrap_pkt.symmetric_key_param != nullptr ){
+				EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+			}
+			if (bootstrap_pkt.hmac_key_param != nullptr ){
+				EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+			}
 			continue;
 		}
 		

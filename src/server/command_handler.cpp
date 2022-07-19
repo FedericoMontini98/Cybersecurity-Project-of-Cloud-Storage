@@ -76,19 +76,17 @@ int Worker::handle_command(unsigned char* received_mes) {
                 return ret;
             }
             /**************************************************************************************/
-            case BOOTSTRAP_LIST:
+            // delete, rename, list
+            case BOOTSTRAP_SIMPLE_OPERATION:
             {
-                return 0;
-            }
-            /**************************************************************************************/
-            case BOOTSTRAP_RENAME:
-            {
-                return 0;
-            }
-            /**************************************************************************************/
-            case BOOTSTRAP_DELETE:
-            {
-                return 0;
+                bootstrap_simple_operation pkt_simple;
+                //Parsing and pkt parameters setting, it also free 'plaintxt'
+                if(!pkt_simple.deserialize_plaintext(plaintxt)){
+                    cerr<<"Received wrong message type!"<<endl;
+                    throw 0;
+                }
+                int ret = simple_operation(pkt_simple);
+                return ret;
             }
             /**************************************************************************************/
             case BOOTSTRAP_LOGOUT:
@@ -309,11 +307,16 @@ int Worker::send_encrypted_file (string filename, uint32_t& counter){
  * @return int error code, if =0 its a success
  */
 int Worker::upload(bootstrap_upload pkt){
-
     uint32_t counter = pkt.counter;
     if(DEBUG){
         cout<<"Received an upload packet with the following fields: "<<endl;
         cout<<"code: "<<pkt.code<<"\nfilename_len: "<<pkt.filename_len<<"\n filename: "<<pkt.filename<<"\n response: "<<pkt.response<<"\n counter: "<<counter<<"\n size: "<<pkt.size<<endl;
+    }
+
+    if (pkt.filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
+    {
+        cerr << "ERR: filename check on whitelist fails"<<endl;
+        return -1;
     }
 
     /**********************************************************/
@@ -321,6 +324,7 @@ int Worker::upload(bootstrap_upload pkt){
     cout<<"***********************************************"<<endl;
     counter = counter +1;
     bootstrap_upload response_pkt;
+
     //Check if there is a file with the same name inside the user dir
     if(checkFileExistance(pkt.filename)){
         cerr<<"File already inside the user dir, delete or rename before upload"<<endl;
@@ -347,7 +351,7 @@ int Worker::upload(bootstrap_upload pkt){
     if(response_pkt.response == 0){
         cout<<"Upload aborted due to a duplicated name"<<endl;
         cout<<"***********************************************"<<endl;
-        return 0;
+        return -1;
     }
 
     counter++;
@@ -433,10 +437,17 @@ int Worker::download(bootstrap_download pkt){
         cout<<"code: "<<pkt.code<<"\nfilename_len: "<<pkt.filename_len<<"\n filename: "<<pkt.filename<<"\n counter: "<<counter<<"\n size: "<<pkt.size<<endl;
     }
 
+    if (pkt.filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
+    {
+        cerr << "ERR: filename check on whitelist fails"<<endl;
+        return -1;
+    }
+
     /**********************************************************/
     /******* Phase 1: received iv + encrypt_msg + HMAC ********/
     counter++;
     bootstrap_download response_pkt;
+
     //Check if there is a file with the same name inside the user dir
     response_pkt.size = checkFileExistanceAndGetSize(pkt.filename); // = 0 if the file doesnt exists
     //Fill the other fields
@@ -520,6 +531,146 @@ int Worker::download(bootstrap_download pkt){
 
     return 0;
 
+    return 0;
+}
+
+// perform one of the operations between delete, list, and remove
+int Worker::simple_operation( bootstrap_simple_operation pkt ){
+    uint32_t counter = pkt.counter;
+    bootstrap_simple_operation response_pkt;
+    string pt;
+    string dir = "./users/" + logged_user + "/" + pkt.filename;
+
+    if(DEBUG){
+        cout<<"Received an simple_operation packet with the following fields: "<<endl;
+        cout<<"Code: "<<pkt.code<<";\n simple_code_op:"<<pkt.simple_op_code<<";\n filename_len:"<<pkt.filename_len<<";\n filename:"<<pkt.filename<<";\n counter:"<<pkt.counter<<endl;
+    }
+
+    counter = counter + 1;
+    response_pkt.code = BOOTSTRAP_SIMPLE_OPERATION;
+    response_pkt.simple_op_code = pkt.simple_op_code;
+    response_pkt.filename_len = strlen(pkt.filename.c_str()); 
+    response_pkt.filename = pkt.filename;
+    response_pkt.response = 0;
+    response_pkt.counter = counter;
+
+    try {
+        if (pkt.filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
+        {
+            cerr << "ERR: filename check on whitelist fails"<<endl;
+            throw 1;
+        }
+
+        /**********************************************************/
+        /******* Phase 1: received iv + encrypt_msg + HMAC ********/
+        cout<<"***********************************************"<<endl;
+
+        // filename is -- in this case
+        if (pkt.simple_op_code == BOOTSTRAP_LIST){
+            // DO LIST
+
+            // IMPLEMENT
+
+            // FAIL
+            response_pkt.response = 0;
+
+            // SUCCESS (PUT DATA IN response_pkt.response_output)
+            response_pkt.response = 2;
+        }
+
+        else if (pkt.simple_op_code == BOOTSTRAP_RENAME){
+            // DO RENAME
+
+            //Check if there is a file with the same name inside the user dir
+            if(!checkFileExistance(pkt.filename.c_str())){
+                cerr<<"File does not exist, delete failed"<<endl;
+                response_pkt.response = 0;  // Delete not possible 
+                throw 2;
+            }
+            // IMPLEMENT rename on dir
+
+            //FAIL
+            response_pkt.response = 0;
+
+            // SUCCESS 
+            response_pkt.response = 1;
+        }
+
+        else if (pkt.simple_op_code == BOOTSTRAP_DELETE){
+            // DO DELETE
+
+            //Check if there is a file with the same name inside the user dir
+            if(!checkFileExistance(pkt.filename.c_str())){
+                cerr<<"File does not exist, delete failed"<<endl;
+                response_pkt.response = 0;  // Delete not possible 
+                throw 2;
+            }
+            else{
+                //try to remove the file
+                if( remove( dir.c_str() ) != 0 ){
+                    cerr << "Error in removing file, delete fails" << endl;
+                    response_pkt.response = 0;
+                    throw 2;
+                }
+                else{
+                    cout << "DELETE SUCCESS on user: " + logged_user + " for file: " + pkt.filename << endl;
+                    response_pkt.response = 1;
+                }
+            }
+        }
+
+        if (response_pkt.response == 0 || response_pkt.response == 1){
+            // Prepare the plaintext to encrypt
+            pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
+            + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
+            + "$" + to_string(response_pkt.counter);
+        }
+        else if (response_pkt.response == 2){
+            // Prepare the plaintext to encrypt with response_output
+            pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
+            + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
+            + "$" + to_string(response_pkt.counter) + "$" + response_pkt.response_output;
+        }
+
+        //Send the feedback message
+        if(!encrypt_generate_HMAC_and_send(pt)){
+            cerr<<"Error during MSG#2 send"<<endl;
+            throw 2;
+        }
+    }
+    catch(int error_code){
+
+        if(DEBUG)
+            cout << "counter is:" + counter << endl;
+
+        // SEND FAILURE PACKET
+        if (response_pkt.response == 0 || response_pkt.response == 1){
+            // Prepare the plaintext to encrypt
+            pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
+            + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
+            + "$" + to_string(response_pkt.counter);
+        }
+        else if (response_pkt.response == 2){
+            // Prepare the plaintext to encrypt with response_output
+            pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
+            + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
+            + "$" + to_string(response_pkt.counter) + "$" + response_pkt.response_output;
+        }
+
+        //Send the feedback message
+        if(!encrypt_generate_HMAC_and_send(pt)){
+            cerr<<"Error during MSG#2 send"<<endl;
+        }
+
+        if (error_code == 1){
+            return -1;
+        }
+        else if (error_code == 2){
+            return -2;
+        }
+
+    }
+    
     return 0;
 }
 

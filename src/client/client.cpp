@@ -985,7 +985,8 @@ bool Client::init_session(){
 
     // send login bootstrap packet
     if (send_login_bootstrap(bootstrap_pkt) != 0){
-		bootstrap_pkt.free_pointers();
+		EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+        EVP_PKEY_free(bootstrap_pkt.hmac_key_param);
         cerr << "something goes wrong in sending login_bootstrap_pkt" << endl;
         return false;
     }
@@ -1107,11 +1108,9 @@ bool Client::init_session(){
 			
 			// SET THE FIELDS THAT WE HAVE GENERATED BEFORE
 			server_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
-			/*EVP_PKEY_up_ref(bootstrap_pkt.symmetric_key_param);*/
 			server_auth_pkt.symmetric_key_param_len_client = bootstrap_pkt.symmetric_key_param_len;
 			
 			server_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
-			/*EVP_PKEY_up_ref(bootstrap_pkt.hmac_key_param);*/
 			server_auth_pkt.hmac_key_param_len_client = bootstrap_pkt.hmac_key_param_len;
 			
 			// this will serialize as the server did
@@ -1578,6 +1577,106 @@ int Client::download(string username){
     return 0;
 }
 
+// delete, rename, list
+int Client::simple_operation(int operation){
+    uint32_t counter = 0;
+    string filename;
+
+    if ( operation == BOOTSTRAP_DELETE ){
+        cout<<"**********************************************"<<endl;
+        cout<<"Which file do you want to delete on the cloud?"<<endl;
+        cout<<"**********************************************"<<endl<<endl;
+        cin>>filename;
+    }
+    else if ( operation == BOOTSTRAP_RENAME ){
+        cout<<"**********************************************"<<endl;
+        cout<<"Which file do you want to rename on the cloud?"<<endl;
+        cout<<"**********************************************"<<endl<<endl;
+        cin>>filename;
+    }
+    else if ( operation == BOOTSTRAP_LIST ){
+        filename = "--";
+    }
+
+    // patht traversal
+    if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+        std::cerr << "ERR: command check on whitelist fails"<<endl;
+        return -1;
+    }
+
+    //Packet initialization
+    bootstrap_simple_operation pkt;
+    pkt.code = BOOTSTRAP_SIMPLE_OPERATION;
+    pkt.simple_op_code = operation;
+    pkt.filename = filename;
+    pkt.filename_len = strlen(filename.c_str());
+    pkt.response = 0;
+    pkt.counter = counter;
+
+    // Prepare the plaintext to encrypt
+    string buffer = to_string(pkt.code) + "$" + to_string(pkt.simple_op_code) + "$" + to_string(pkt.filename_len) 
+    + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter);
+
+    if(!encrypt_generate_HMAC_and_send(buffer)){
+        cerr<<"Error during encryption and send of MSG#1 of Delete"<<endl;
+        return -1;
+    }
+
+    counter++;
+    cout<<"***********************************************"<<endl;
+
+    /***************************************************************************************/
+    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
+
+    //Receive the message, check the HMAC validity and decrypt the ciphertext
+    unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
+
+    if(plaintxt == nullptr){
+        cerr<<"Error during receive_decrypt_and_verify_HMAC of MSG#2"<<endl;
+        return -2;
+    }
+
+    // Expected packet type
+    bootstrap_simple_operation rcvd_pkt;
+
+    //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
+    if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
+        cerr<<"Received wrong message type!"<<endl;
+        return -2;
+    }
+
+    if(DEBUG){
+        cout<<"You received the following cripted message: "<<endl;
+        cout<<"Code: "<<rcvd_pkt.code<<";\n simple_code_op:"<<rcvd_pkt.simple_op_code<<";\n filename_len:"<<rcvd_pkt.filename_len<<";\n filename:"<<rcvd_pkt.filename<<";\n counter:"<<rcvd_pkt.counter<<endl;
+    }
+
+    // Check on rcvd packets values
+    if( rcvd_pkt.counter != counter ){
+        cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
+        return -2;
+    }
+
+    if(DEBUG){
+        cout<<"Counter with good value"<<endl;
+    }
+
+    // Check the response of the server
+    if( rcvd_pkt.response != 1 && rcvd_pkt.response != 2){
+        cerr<<"Error in packet response"<<endl;
+        return -2;
+    }
+    if(DEBUG){
+        cout<<"Affirmative response"<<endl;
+    }
+
+    // response_output available (eg. list), i print it on stdout
+    if (rcvd_pkt.response == 2 && rcvd_pkt.simple_op_code == BOOTSTRAP_LIST){
+        cout << "LIST OUTPUT:\n" + rcvd_pkt.response_output << endl;
+    }
+
+    return 0;
+}
+
 // retrieve user certificate
 X509* Client::get_certificate() {
 	
@@ -1706,14 +1805,17 @@ int Client::run(){
         }
         if(!strcmp(command_chars,"list")){
             state = 3;
+            simple_operation(BOOTSTRAP_LIST);
             //cout<<"sei dentro list"<<endl;
         }
         if(!strcmp(command_chars,"rename")){
             state = 4;
+            simple_operation(BOOTSTRAP_RENAME);
             //cout<<"sei dentro rename"<<endl;
         }
         if(!strcmp(command_chars,"delete")){
             state = 5;
+            simple_operation(BOOTSTRAP_DELETE);
             //cout<<"sei dentro delete"<<endl;
         }
         if(!strcmp(command_chars,"logout")){

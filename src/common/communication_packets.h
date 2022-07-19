@@ -261,12 +261,6 @@ struct login_bootstrap_pkt
 		return true;
     }
 	
-	// free keys
-	void free_pointers(){
-		if (symmetric_key_param != nullptr) { EVP_PKEY_free(symmetric_key_param); }
-		if (hmac_key_param != nullptr)  	{ EVP_PKEY_free(hmac_key_param); 	  }
-		
-	}
 };
 
 /*********************************************************************************************************************************/
@@ -634,17 +628,6 @@ struct login_authentication_pkt {
 		return true;
     }
 	
-	void free_pointers(){
-
-		// fields
-		if ( cert != nullptr) { X509_free(cert); }
-		if (symmetric_key_param_server_clear!= nullptr){ EVP_PKEY_free(symmetric_key_param_server_clear);}
-		if (hmac_key_param_server_clear != nullptr)    { EVP_PKEY_free(hmac_key_param_server_clear); 	 }
-		if (symmetric_key_param_server != nullptr)	   { EVP_PKEY_free(symmetric_key_param_server); 	 }
-		if (hmac_key_param_server != nullptr)		   { EVP_PKEY_free(hmac_key_param_server); 			 }
-		if (symmetric_key_param_client != nullptr)	   { EVP_PKEY_free(symmetric_key_param_client); 	 }
-		if (hmac_key_param_client != nullptr)	       { EVP_PKEY_free(hmac_key_param_client);			 }	
-	}
 };
 
 /*********************************************************************************************************************************/
@@ -1410,15 +1393,182 @@ struct end_download{
 
 /*********************************************************************************************************************************/
 
-#define BOOTSTRAP_LIST  11
+
 
 /*********************************************************************************************************************************/
 
-#define BOOTSTRAP_RENAME  15
+
 
 /*********************************************************************************************************************************/
 
-#define BOOTSTRAP_DELETE  20
+#define BOOTSTRAP_SIMPLE_OPERATION  20
+#define BOOTSTRAP_LIST  30
+#define BOOTSTRAP_DELETE 31
+#define BOOTSTRAP_RENAME  32
+
+// bootstrap of a simple operation: delete, rename, list
+struct bootstrap_simple_operation{
+    // Send through the net
+    unsigned char* iv;
+    uint32_t cipher_len;
+    string ciphertext;
+    unsigned char* HMAC;
+
+    // Filled before serialization and after deserialization_decrypted
+    uint16_t code;
+    uint16_t simple_op_code;
+    uint32_t filename_len;
+    string filename;
+    uint32_t response; // 0: operation not allowed, 1: operation allowed, 2: operation allowed and response_output available
+    uint32_t counter;
+
+    // additional data on response, used in list to save the output
+    string response_output = ""; 
+
+    void *serialize_message(int &len)
+    {
+        uint8_t *serialized_pkt = nullptr;
+        int pointer_counter = 0;
+
+        len = (IV_LENGTH + sizeof(cipher_len) + cipher_len + HMAC_LENGTH);
+
+        serialized_pkt = (uint8_t *)malloc(len);
+        if (!serialized_pkt)
+        {
+            cerr << "serialized packet malloc failed" << endl;
+            return nullptr;
+        }
+
+        uint32_t certif_ciph_len = htonl(cipher_len);
+
+        // adding the iv
+        uint8_t *cert_iv = (uint8_t *)iv;
+        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
+        pointer_counter += IV_LENGTH;
+
+        // adding the ciphertext length
+        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
+        pointer_counter += sizeof(certif_ciph_len);
+
+        // adding the ciphertext
+        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
+        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
+        pointer_counter += cipher_len;
+
+        // adding the hmac
+        uint8_t *cert_hmac = (uint8_t *)HMAC;
+        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
+
+        return serialized_pkt;
+    }
+
+    bool deserialize_message(uint8_t *serialized_pkt_received)
+    {
+        int pointer_counter = 0;
+
+        iv = (unsigned char*)malloc(IV_LENGTH);
+
+        // copy of the iv
+        memcpy(iv,serialized_pkt_received + pointer_counter,IV_LENGTH);
+        pointer_counter += IV_LENGTH;
+
+        // copy of the ciphertext length
+        memcpy(&cipher_len, serialized_pkt_received + pointer_counter, sizeof(cipher_len));
+        cipher_len = ntohl(cipher_len);
+        pointer_counter += sizeof(cipher_len);
+
+        // copy of the ciphertext
+        ciphertext.assign((char *)(serialized_pkt_received + pointer_counter), cipher_len);
+        pointer_counter += cipher_len;
+
+        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
+
+        if (!HMAC){
+            cerr << "HMAC malloc failed" << endl;
+            return false;
+        }
+
+        // copy of the ciphertext
+        memcpy(HMAC,serialized_pkt_received + pointer_counter,HMAC_LENGTH);
+        pointer_counter += HMAC_LENGTH;
+
+        free(serialized_pkt_received);
+
+        return true;
+    }
+
+    bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
+
+        string s = (char*)serialized_decrypted_pkt;
+        string delimiter = "$";
+        unsigned int pos;
+
+        //Extract the code
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            code = stoi(i);
+            if(code!=BOOTSTRAP_SIMPLE_OPERATION){
+                return false;
+            }
+            s.erase(0, pos + delimiter.length());
+        }
+
+        //Extract the simple_code_op
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            simple_op_code = stoi(i);
+            if(simple_op_code != BOOTSTRAP_DELETE && simple_op_code != BOOTSTRAP_RENAME && simple_op_code != BOOTSTRAP_LIST){
+                return false;
+            }
+            s.erase(0, pos + delimiter.length());
+        }
+
+        //Extract the filename length
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            filename_len = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+
+        // Extract the filename
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            filename = s.substr(0, pos);
+            s.erase(0, pos + delimiter.length());
+        }
+
+        // Extract the response
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            response = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+
+        // Extract the counter
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            counter = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+
+        // Check if the packet have additional data on response output and extract its data
+        if (response == 2){
+            pos = s.find(delimiter);
+            string i = s.substr(0, pos);
+            response_output = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+
+        free(serialized_decrypted_pkt);
+        return true;
+    }
+};
 
 /*********************************************************************************************************************************/
 

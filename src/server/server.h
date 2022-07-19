@@ -18,6 +18,8 @@
 # define FILE_FRAGMENTS_SIZE 8192
 # define HMAC_KEY_SIZE 32
 # define FILE_PATH "./users/"
+# define USERNAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-"
+# define FILENAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-."
 
 class Server {
     int listener_socket = -1;
@@ -90,6 +92,7 @@ class Worker {
     //Commands
     int upload(bootstrap_upload pkt);
     int download(bootstrap_download pkt);
+    int simple_operation(bootstrap_simple_operation pkt); //rename, list, delete
 
     //Utility function
     unsigned char* receive_decrypt_and_verify_HMAC();

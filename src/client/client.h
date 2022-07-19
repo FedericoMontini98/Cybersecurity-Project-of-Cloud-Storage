@@ -75,6 +75,7 @@ class Client{
     void help();
     int upload(string username);
     int download(string username);
+    int simple_operation(int operation);
 
     //Utility functions
     uint32_t file_exists(string filename, string username);
