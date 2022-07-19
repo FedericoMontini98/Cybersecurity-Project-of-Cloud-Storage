@@ -87,7 +87,6 @@ EVP_PKEY* generate_dh_key(){
 unsigned char* derive_shared_secret(EVP_PKEY* this_host_dh_key, EVP_PKEY* other_host_dh_key){
 
 	int ret;
-	unsigned char* key = nullptr;
 
 	// Create a new context for deriving DH key
 	EVP_PKEY_CTX* key_ctx = EVP_PKEY_CTX_new(this_host_dh_key, nullptr);

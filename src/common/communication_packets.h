@@ -1157,7 +1157,7 @@ struct bootstrap_download
         pos = s.find(delimiter);
         if(pos!=string::npos){
             string i = s.substr(0, pos);
-            counter = stoi(i);
+            size = stoi(i);
             s.erase(0, pos + delimiter.length());
         }
 
