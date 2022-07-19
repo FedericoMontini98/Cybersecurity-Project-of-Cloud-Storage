@@ -149,6 +149,8 @@ struct generic_message_file{
 
         // copy of the ciphertext
         ciphertext = (uint8_t*)malloc(cipher_len);
+        memset(ciphertext,0,cipher_len);
+        
         memcpy(ciphertext, serialized_pkt + pointer_counter, cipher_len);
         pointer_counter += cipher_len;
 
@@ -161,23 +163,6 @@ struct generic_message_file{
         free(serialized_pkt);
 
         return true;
-    }
-
-    int deserialize_code(uint8_t *serialized_decrypted_pkt){
-
-        unsigned short code = -1;
-
-        string s = (char*)serialized_decrypted_pkt;
-        string delimiter = "$";
-        unsigned int pos;
-        //Extract the code
-        pos = s.find(delimiter);
-        if(pos!=string::npos){
-            string i = s.substr(0, pos);
-            code = stoi(i);
-        }
-
-        return code;
     }
 
     void *serialize_message(int &len)
@@ -193,7 +178,7 @@ struct generic_message_file{
             cerr << "serialized packet malloc failed" << endl;
             return nullptr;
         }
-
+        memset(serialized_pkt,0,len);
         uint32_t certif_ciph_len = htonl(cipher_len);
 
         // adding the iv

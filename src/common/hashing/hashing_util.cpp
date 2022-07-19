@@ -94,7 +94,7 @@ unsigned char* key, uint32_t max_msg_size){
             cerr << "malloc of digest failed" << endl;
             throw 1;
         }
-
+        memset(digest,0,EVP_MD_size(EVP_sha256()));
         ctx = HMAC_CTX_new();
 
         if (!ctx){

@@ -118,10 +118,11 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
         ciphertext = nullptr;
         return false;
     }
-    cout<<"cipherlen: "<<cipherlen<<endl;
+
 	// Get the HMAC
     uint32_t MAC_len; 
     unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    memset(MACStr,0,IV_LENGTH + cipherlen);
     unsigned char* HMAC;
     memcpy(MACStr,this->iv, IV_LENGTH);
     memcpy(MACStr + 16,ciphertext,cipherlen);
@@ -152,7 +153,7 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
 
     //Send the first message
     if(!send_message((void *)data, data_length)){
-        cout<<"Error during packet #1 forwarding"<<endl;
+        cout<<"Error during packet forwarding"<<endl;
         free(MACStr);
         MACStr = nullptr;
         free(ciphertext);
