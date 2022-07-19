@@ -515,6 +515,10 @@ struct login_authentication_pkt {
     bool deserialize_message(uint8_t* serialized_pkt_received){
 		int pointer_counter = 0;
 
+        if (iv_cbc != nullptr){
+            iv_cbc = nullptr;
+        } 
+
 		// cert_len, dh_symm_key_len, dh_hmac_key_len, encrypted_signing_len, iv_cbc, cert, 
 		// dh_symm_key, dh_hmac_key, encrypted_signing
 		
@@ -538,7 +542,12 @@ struct login_authentication_pkt {
         pointer_counter += sizeof(encrypted_signing_len);
 		
 		// copy of iv_cbc
-		iv_cbc = serialized_pkt_received + pointer_counter;
+        iv_cbc = (unsigned char*) malloc(IV_LENGTH);
+        if (!iv_cbc){
+            cerr << "malloc failed iv_cbc" << endl;
+            return false;
+        }
+        memcpy(iv_cbc, serialized_pkt_received + pointer_counter, IV_LENGTH);
         pointer_counter += IV_LENGTH;
 		
 		// copy of certificate
@@ -583,6 +592,10 @@ struct login_authentication_pkt {
     bool deserialize_message_no_clear_keys(uint8_t* serialized_pkt_received){
 		int pointer_counter = 0;
 
+        if (iv_cbc != nullptr){
+            iv_cbc = nullptr;
+        } 
+
 		// cert_len, encrypted_signing_len, iv_cbc, cert, encrypted_signing
 		
 		// copy cert_len
@@ -596,7 +609,12 @@ struct login_authentication_pkt {
         pointer_counter += sizeof(encrypted_signing_len);
 		
 		// copy of iv_cbc
-		iv_cbc = serialized_pkt_received + pointer_counter;
+        iv_cbc = (unsigned char*) malloc(IV_LENGTH);
+        if (!iv_cbc){
+            cerr << "malloc failed iv_cbc" << endl;
+            return false;
+        }
+        memcpy(iv_cbc, serialized_pkt_received + pointer_counter, IV_LENGTH);
         pointer_counter += IV_LENGTH;
 		
 		// copy of certificate
@@ -617,7 +635,7 @@ struct login_authentication_pkt {
     }
 	
 	void free_pointers(){
-		
+
 		// fields
 		if ( cert != nullptr) { X509_free(cert); }
 		if (symmetric_key_param_server_clear!= nullptr){ EVP_PKEY_free(symmetric_key_param_server_clear);}

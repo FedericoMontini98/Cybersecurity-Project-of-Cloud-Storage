@@ -431,7 +431,9 @@ bool Worker::load_private_server_key(){
 bool Worker::generate_iv (const EVP_CIPHER* cipher){
     int iv_len = EVP_CIPHER_iv_length(cipher);
 
-    free(iv);
+    if (iv != nullptr){
+        free(iv);
+    }
 	iv = nullptr;
     iv = (unsigned char*) malloc(iv_len);
 
@@ -662,8 +664,6 @@ bool Worker::init_session(){
 		return false;
 	}
 	
-	EVP_PKEY_up_ref(server_auth_pkt.symmetric_key_param_server_clear);
-	
 	server_auth_pkt.hmac_key_param_server_clear = generate_sts_key_param();
 	server_auth_pkt.hmac_key_param_server = server_auth_pkt.hmac_key_param_server_clear; // TO ENCRYPT
 	
@@ -672,14 +672,10 @@ bool Worker::init_session(){
 		return false;
 	}
 	
-	EVP_PKEY_up_ref(server_auth_pkt.hmac_key_param_server_clear);
-	
 	// set the params sent by client
 	server_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
-	EVP_PKEY_up_ref(bootstrap_pkt.symmetric_key_param);
 	
 	server_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
-	EVP_PKEY_up_ref(bootstrap_pkt.hmac_key_param);
 	
 	// derive symmetric key and hmac key, hash them, take a portion of the hash for the 128 bit key
 	symmetric_key_no_hashed = derive_shared_secret(server_auth_pkt.symmetric_key_param_server, bootstrap_pkt.symmetric_key_param);
@@ -736,7 +732,9 @@ bool Worker::init_session(){
 			}
 			
 			// decrypt the encrypted part using the derived symmetric key and the received iv
-			free(iv);
+			if (iv != nullptr){
+			    free(iv);
+            }
 			iv = nullptr;
 			iv = (unsigned char*) malloc(iv_size);
 			
@@ -745,7 +743,8 @@ bool Worker::init_session(){
 				throw 3;
 			}
 			
-			memcpy(iv, client_auth_pkt.iv_cbc, iv_size);
+			memcpy(iv, server_auth_pkt.iv_cbc, iv_size);
+            free(server_auth_pkt.iv_cbc);
 
 			ret = cbc_decrypt_fragment(client_auth_pkt.encrypted_signing, client_auth_pkt.encrypted_signing_len, plaintext, plainlen);
 			
@@ -789,20 +788,16 @@ bool Worker::init_session(){
 			
 			// SET THE FIELDS RECEIVED ON BOOTSTRAP
 			client_auth_pkt.symmetric_key_param_client = bootstrap_pkt.symmetric_key_param;
-			EVP_PKEY_up_ref(bootstrap_pkt.symmetric_key_param);
 			client_auth_pkt.symmetric_key_param_len_client = bootstrap_pkt.symmetric_key_param_len;
 			
 			client_auth_pkt.hmac_key_param_client = bootstrap_pkt.hmac_key_param;
-			EVP_PKEY_up_ref(bootstrap_pkt.hmac_key_param);
 			client_auth_pkt.hmac_key_param_len_client = bootstrap_pkt.hmac_key_param_len;
 			
 			// SET THE FIELDS THAT WE HAVE GENERATED BEFORE
 			client_auth_pkt.symmetric_key_param_server = server_auth_pkt.symmetric_key_param_server_clear;
-			EVP_PKEY_up_ref(server_auth_pkt.symmetric_key_param_server_clear);
 			client_auth_pkt.symmetric_key_param_len_server = client_auth_pkt.symmetric_key_param_server_clear_len;
 			
 			client_auth_pkt.hmac_key_param_server = server_auth_pkt.hmac_key_param_server_clear;
-			EVP_PKEY_up_ref(server_auth_pkt.hmac_key_param_server_clear);
 			client_auth_pkt.hmac_key_param_len_server = server_auth_pkt.hmac_key_param_server_clear_len;
 			
 			// this will serialize as the client did
@@ -826,7 +821,8 @@ bool Worker::init_session(){
 			// frees
 			free(to_copy);
 			free(signed_text);
-			free(receive_buffer);
+			secure_free(receive_buffer, len);
+			free(plaintext);
 			X509_free(ca_cert);
 			X509_CRL_free(ca_crl);
 			EVP_PKEY_free(client_pubk);
@@ -843,21 +839,20 @@ bool Worker::init_session(){
 			cout << "some error occurred in receiveing client_auth_pkt" << endl;
 			continue;
 		}
-		
+
+		cout<<"CLIENT CORRECTLY AUTHENTICATED."<<endl<<endl;
 		break;
 		
 	}
 
-	cout<<"CLIENT CORRECTLY AUTHENTICATED."<<endl<<endl;
+	EVP_PKEY_free(bootstrap_pkt.symmetric_key_param);
+    EVP_PKEY_free(bootstrap_pkt.hmac_key_param);
+	EVP_PKEY_free(server_auth_pkt.symmetric_key_param_server_clear);
+    EVP_PKEY_free(server_auth_pkt.hmac_key_param_server_clear);
 	
 	// user correctly authenticated
 	logged_user = bootstrap_pkt.username;
-	
-	//free all 
-	bootstrap_pkt.free_pointers();
-	server_auth_pkt.free_pointers();
-	client_auth_pkt.free_pointers();
-	
+
 	return true;
 }
 
