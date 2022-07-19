@@ -9,6 +9,7 @@ using namespace std;
 // THIS FILE CONTAINS THE STRUCTURE OF THE PACKETS WITH THEIR CODE
 # define IV_LENGTH 16
 # define HMAC_LENGTH 32
+# define MAX_PKT_SIZE 4300
 
 // PACKET CODES
 #define BOOTSTRAP_LOGIN 1
@@ -43,6 +44,14 @@ struct generic_message{
         memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
         cipher_len = ntohl(cipher_len);
         pointer_counter += sizeof(cipher_len);
+
+        // Check for tainted cipherlen
+        if(cipher_len >= MAX_PKT_SIZE ){
+            cerr<<"Tainted cipherlen received"<<endl;
+            free(serialized_pkt);
+            free(iv);
+            return false;
+        }
 
         // copy of the ciphertext
         ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
@@ -146,6 +155,14 @@ struct generic_message_file{
         memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
         cipher_len = ntohl(cipher_len);
         pointer_counter += sizeof(cipher_len);
+
+        // Check for tainted cipherlen
+        if(cipher_len >= MAX_PKT_SIZE ){
+            cerr<<"Tainted cipherlen received"<<endl;
+            free(serialized_pkt);
+            free(iv);
+            return false;
+        }
 
         // copy of the ciphertext
         ciphertext = (uint8_t*)malloc(cipher_len);
@@ -743,76 +760,6 @@ struct bootstrap_upload
     uint32_t counter;
     uint32_t size;
 
-    void *serialize_message(int &len)
-    {
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (sizeof(cipher_len) + cipher_len + IV_LENGTH + HMAC_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-        memset(serialized_pkt,0,len);
-        uint32_t certif_ciph_len = htonl(cipher_len);
-
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
-    }
-
-    bool deserialize_message(uint8_t *serialized_pkt_received)
-    {
-        int pointer_counter = 0;
-
-        iv = (unsigned char*)malloc(IV_LENGTH);
-        memset(iv,0,IV_LENGTH);
-
-        // copy of the iv
-        memcpy(iv,serialized_pkt_received + pointer_counter,IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // copy of the ciphertext length
-        memcpy(&cipher_len, serialized_pkt_received + pointer_counter, sizeof(cipher_len));
-        cipher_len = ntohl(cipher_len);
-        pointer_counter += sizeof(cipher_len);
-
-        // copy of the ciphertext
-        ciphertext.assign((char *)(serialized_pkt_received + pointer_counter), cipher_len);
-        pointer_counter += cipher_len;
-
-        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
-        memset(HMAC,0,HMAC_LENGTH);
-
-        // copy of the ciphertext
-        memcpy(HMAC,serialized_pkt_received + pointer_counter,HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        free(serialized_pkt_received);
-
-        return true;
-    }
-
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
 
         string s = (char*)serialized_decrypted_pkt;
@@ -875,7 +822,6 @@ struct bootstrap_upload
 /*********************************************************************************************************************************/
 
 #define FILE_UPLOAD 6
-#define FILE_UPLOAD 6
 struct file_upload
 {
     //In clear fields
@@ -889,82 +835,6 @@ struct file_upload
     uint32_t counter;
     uint32_t msg_len;
     unsigned char *msg;
-
-    /**
-     * @brief Serialize the packet REMEMBER TO FREE(serialized_data) after the send
-     * 
-     * @param len return the length of the serialization
-     * @return void* 
-     */
-    void* serialize_message(int& len){
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH + IV_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-        memset(serialized_pkt,0,len);
-        uint32_t certif_ciph_len = htonl(cipher_len);
-
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        memcpy(serialized_pkt + pointer_counter, ciphertext, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
-    }
-
-    bool deserialize_message(uint8_t * serialized_pkt){
-        int pointer_counter = 0;
-
-        iv = (unsigned char*)malloc(IV_LENGTH);
-        memset(iv,0,IV_LENGTH);
-
-        // copy of the iv
-        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // copy of the ciphertext length
-        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
-        cipher_len = ntohl(cipher_len);
-        pointer_counter += sizeof(cipher_len);
-
-        // copy of the ciphertext
-        msg = (uint8_t*)malloc(cipher_len);
-        memset(msg,0,cipher_len);
-
-        memcpy(ciphertext,serialized_pkt + pointer_counter, cipher_len);
-        pointer_counter += cipher_len;
-
-        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
-        memset(HMAC, 0, HMAC_LENGTH);
-
-        // copy of the ciphertext
-        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        free(serialized_pkt);
-
-        return true;
-    }
 
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
         uint32_t pointer_counter = 0;
@@ -1002,74 +872,6 @@ struct end_upload{
     uint16_t code;
     string response;
     uint32_t counter;
-
-    void *serialize_message(int &len)
-    {
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH + IV_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-        memset(serialized_pkt,0,len);
-        uint32_t certif_ciph_len = htonl(cipher_len);
-
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;        
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
-    }
-
-    bool deserialize_message(uint8_t *serialized_pkt)
-    {
-        int pointer_counter = 0;
-
-        iv = (unsigned char*)malloc(IV_LENGTH);
-        memset(iv,0,IV_LENGTH);
-        // copy of the iv
-        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // copy of the ciphertext length
-        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
-        cipher_len = ntohl(cipher_len);
-        pointer_counter += sizeof(cipher_len);
-
-        // copy of the ciphertext
-        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
-        pointer_counter += cipher_len;
-
-        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
-        memset(HMAC,0,HMAC_LENGTH);
-        // copy of the ciphertext
-        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        free(serialized_pkt);
-
-        return true;
-    }
 
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
         unsigned int pos;
@@ -1124,70 +926,6 @@ struct bootstrap_download
     uint32_t counter;
     uint32_t size;
 
-    void *serialize_message(int &len)
-    {
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (strlen(ciphertext.c_str()) + IV_LENGTH + sizeof(cipher_len) + HMAC_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-        memset(serialized_pkt,0,len);
-        uint16_t certif_ciph_len = htons(cipher_len);
-
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
-    }
-
-    void deserialize_message(uint8_t *serialized_pkt)
-    {
-        int pointer_counter = 0;
-
-        // copy of the code
-        memcpy(&code, serialized_pkt, sizeof(code));
-        code = ntohs(code);
-        pointer_counter += sizeof(code);
-
-        // copy filename_len
-        memcpy(&filename_len, serialized_pkt + pointer_counter, sizeof(filename_len));
-        filename_len = ntohs(filename_len);
-        pointer_counter += sizeof(filename_len);
-
-        // copy of the filename
-        filename.assign((char *)(serialized_pkt + pointer_counter), filename_len);
-        pointer_counter += filename_len;
-
-        // copy of the counter
-        memcpy(&counter, serialized_pkt + pointer_counter, sizeof(counter));
-        counter = ntohl(counter);
-        pointer_counter += sizeof(counter);
-
-        free(serialized_pkt);
-        return;
-    }
 
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
 
@@ -1253,72 +991,6 @@ struct file_download
     uint32_t counter;
     uint32_t msg_len;
     unsigned char *msg;
-
-    void* serialize_message(int& len){
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH + IV_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-        memset(serialized_pkt,0,len);
-        uint32_t certif_ciph_len = htonl(cipher_len);
-
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;        
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
-    }
-
-    bool deserialize_message(uint8_t *serialized_pkt){
-        int pointer_counter = 0;
-
-        iv = (unsigned char*)malloc(IV_LENGTH);
-        memset(iv,0,IV_LENGTH);
-        // copy of the iv
-        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // copy of the ciphertext length
-        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
-        cipher_len = ntohl(cipher_len);
-        pointer_counter += sizeof(cipher_len);
-
-        // copy of the ciphertext
-        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
-        pointer_counter += cipher_len;
-
-        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
-        memset(HMAC,0,HMAC_LENGTH);
-        // copy of the ciphertext
-        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        free(serialized_pkt);
-
-        return true;
-    }
 
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
         unsigned int pos;
@@ -1511,79 +1183,6 @@ struct bootstrap_simple_operation{
 
     // additional data on response, used in list to save the output
     string response_output = ""; 
-
-    void *serialize_message(int &len)
-    {
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (IV_LENGTH + sizeof(cipher_len) + cipher_len + HMAC_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-
-        uint32_t certif_ciph_len = htonl(cipher_len);
-
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
-    }
-
-    bool deserialize_message(uint8_t *serialized_pkt_received)
-    {
-        int pointer_counter = 0;
-
-        iv = (unsigned char*)malloc(IV_LENGTH);
-
-        // copy of the iv
-        memcpy(iv,serialized_pkt_received + pointer_counter,IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // copy of the ciphertext length
-        memcpy(&cipher_len, serialized_pkt_received + pointer_counter, sizeof(cipher_len));
-        cipher_len = ntohl(cipher_len);
-        pointer_counter += sizeof(cipher_len);
-
-        // copy of the ciphertext
-        ciphertext.assign((char *)(serialized_pkt_received + pointer_counter), cipher_len);
-        pointer_counter += cipher_len;
-
-        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
-
-        if (!HMAC){
-            cerr << "HMAC malloc failed" << endl;
-            return false;
-        }
-
-        // copy of the ciphertext
-        memcpy(HMAC,serialized_pkt_received + pointer_counter,HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        free(serialized_pkt_received);
-
-        return true;
-    }
 
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
 
