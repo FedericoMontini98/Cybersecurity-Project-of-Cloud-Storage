@@ -20,7 +20,7 @@ Worker::~Worker(){
 int Worker::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& digest, uint32_t& digestlen){
 	
 	// hmac_util.cpp
-	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, FILE_FRAGMENTS_SIZE);
+	return generate_SHA256_HMAC(msg, msg_len, digest, digestlen, hmac_key, MAX_PKT_SIZE);
 
 }
 
@@ -139,26 +139,34 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
 		return nullptr;
     }
 
+	//It also FREE data if reaches the end
     if(!rcvd_pkt.deserialize_message(data)){
         cerr<<"Error during deserialization of the data"<<endl;
         free(data);
         data = nullptr;
         return nullptr;
     }
-    free(this->iv);
-    this->iv = nullptr;
+
+	//Deallocate the iv
+	if(this->iv != nullptr)
+    	free(this->iv);
     this->iv = rcvd_pkt.iv;
 
     uint32_t MAC_len; 
     unsigned char*  MACStr;
     unsigned char* HMAC;
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
-    memcpy(MACStr + 16,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
+    memcpy(MACStr + IV_LENGTH,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext
     generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
 
+	if(MAC_len != HMAC_LENGTH){
+		cerr<<"The size of the gerated HMAC differs!"<<endl;
+		cerr<<"HMAC_LENGTH: "<<HMAC_LENGTH<<"\nMAC_len: "<<MAC_len<<endl;
+	}
     //HMAC Verification
     if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
         cout<<"HMAC cant be verified, try again"<<endl;
@@ -192,6 +200,82 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
     rcvd_pkt.HMAC = nullptr;
     return plaintxt;
 }
+
+/**
+ * @brief manage the receive and various general checks on the received packet fo files
+ *        MANAGE THE plaintxt destruction!
+ * @return unsigned* the plaintext to deserialize inside the correct packet type
+ */
+unsigned char* Worker::receive_decrypt_and_verify_HMAC_for_files(){
+    unsigned char* data;
+    generic_message_file rcvd_pkt;
+    uint32_t length_rec;
+    
+    //Receive the serialized data
+    int ret = receive_message(data, length_rec);
+    if(ret!=0){
+        cerr << "ERR: some error in receiving MSG, received error: " << ret<< endl;
+		free(data);
+        data = nullptr;
+		return nullptr;
+    }
+
+	//It also FREE data if reaches the end
+    if(!rcvd_pkt.deserialize_message(data)){
+        cerr<<"Error during deserialization of the data"<<endl;
+        free(data);
+        data = nullptr;
+        return nullptr;
+    }
+
+	//Deallocate the iv
+	if(this->iv != nullptr)
+    	free(this->iv);
+    this->iv = rcvd_pkt.iv;
+
+    uint32_t MAC_len; 
+    unsigned char*  MACStr;
+    unsigned char* HMAC;
+
+    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
+    memcpy(MACStr, this->iv , IV_LENGTH);
+    memcpy(MACStr + IV_LENGTH,rcvd_pkt.ciphertext,rcvd_pkt.cipher_len);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
+
+    //HMAC Verification
+    if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
+        cout<<"HMAC cant be verified, try again"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(rcvd_pkt.HMAC);
+        rcvd_pkt.HMAC = nullptr;
+        return nullptr;
+    }
+
+    unsigned char* plaintxt;
+    int ptlen;
+
+    //Decrypt the ciphertext and obtain the plaintext
+    if(cbc_decrypt_fragment(rcvd_pkt.ciphertext,rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
+        cout<<"Error during encryption"<<endl;
+        free(MACStr);
+        MACStr = nullptr;
+        free(rcvd_pkt.HMAC);
+        rcvd_pkt.HMAC = nullptr;
+        return nullptr;
+    }
+    free(MACStr);
+    MACStr = nullptr;
+    free(HMAC);
+    HMAC = nullptr;
+    free(rcvd_pkt.HMAC);
+    rcvd_pkt.HMAC = nullptr;
+    return plaintxt;
+}
+
 
 /**
  * @brief Encrypt the plaintext and fill a generic packet to send through the socket
@@ -252,7 +336,7 @@ int Worker::cbc_encrypt_fragment (unsigned char* msg, int msg_len, unsigned char
 
     EVP_CIPHER_CTX* ctx;
 	
-	if (msg_len == 0 || msg_len > FILE_FRAGMENTS_SIZE) {
+	if (msg_len == 0 || msg_len > MAX_PKT_SIZE) {
         cerr << "message length is not allowed" << endl;
         return -1;
     }
@@ -345,7 +429,7 @@ int Worker::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
 
     EVP_CIPHER_CTX* ctx;
 	
-    if (cipherlen == 0 || cipherlen > FILE_FRAGMENTS_SIZE) {
+    if (cipherlen == 0 || cipherlen > MAX_PKT_SIZE) {
         cerr << "ERR: input cipher len not allowed" << endl;
         return -1;
     }

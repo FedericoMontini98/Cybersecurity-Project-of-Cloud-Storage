@@ -15,8 +15,9 @@
 
 # define DEBUG true
 # define BACKLOG_QUEUE_SIZE  10
-# define FILE_FRAGMENTS_SIZE 8192
+# define FILE_FRAGMENTS_SIZE 4096
 # define HMAC_KEY_SIZE 32
+# define MAX_PKT_SIZE 8300
 # define FILE_PATH "./users/"
 # define USERNAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-"
 # define FILENAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-."
@@ -96,6 +97,7 @@ class Worker {
 
     //Utility function
     unsigned char* receive_decrypt_and_verify_HMAC();
+    unsigned char* receive_decrypt_and_verify_HMAC_for_files();
     bool encrypt_generate_HMAC_and_send(string buffer);
     bool checkFileExistance(string filename);
     size_t checkFileExistanceAndGetSize(string filename);

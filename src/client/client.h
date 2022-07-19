@@ -18,7 +18,8 @@
 # define MAX_FILENAME_LENGHT 30
 # define USERNAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-"
 # define FILENAME_WHITELIST_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789_-."
-# define FILE_FRAGMENTS_SIZE 300
+# define FILE_FRAGMENTS_SIZE 4096
+# define MAX_PKT_SIZE 8300
 # define FILE_PATH "./users/"
 # define FILE_MAX_SIZE 4294967296
 # define IV_LENGTH 16
@@ -85,6 +86,7 @@ class Client{
     //Utility function
     unsigned char* receive_decrypt_and_verify_HMAC();
     bool encrypt_generate_HMAC_and_send(string buffer);
+    bool encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len);
 
     int send_login_bootstrap(login_bootstrap_pkt& pkt);
 	int send_login_client_authentication(login_authentication_pkt& pkt);
