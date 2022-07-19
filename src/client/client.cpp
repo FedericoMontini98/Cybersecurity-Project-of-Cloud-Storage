@@ -1757,9 +1757,14 @@ int Client::simple_operation(int operation){
 
     // Check the response of the server
     if( rcvd_pkt.response != 1 && rcvd_pkt.response != 2){
-        cerr<<"Error in packet response"<<endl;
+
+        if (operation == BOOTSTRAP_DELETE || operation == BOOTSTRAP_RENAME)
+            cerr << "Operation Failed, file not found" << endl;
+        else if (operation == BOOTSTRAP_LIST)
+            cerr << "List failed" << endl;
         return -2;
     }
+    
     if(DEBUG){
         cout<<"Affirmative response"<<endl;
     }
