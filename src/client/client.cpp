@@ -183,7 +183,7 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
  */
 bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
 	// Generic Packet
-	generic_message pkt;
+	generic_message_file pkt;
 
 	unsigned char* ciphertext;
     int cipherlen;
@@ -197,15 +197,13 @@ bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
 
 	// Get the HMAC
     uint32_t MAC_len; 
-    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    uint8_t*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
     unsigned char* HMAC;
     memcpy(MACStr,this->iv, IV_LENGTH);
     memcpy(MACStr + IV_LENGTH,ciphertext,cipherlen);
 
-    cout<<"cipherlen + IV_LEN"<< IV_LENGTH + cipherlen <<endl;
-
 	//Initialization of the data to serialize
-    pkt.ciphertext = (const char*)ciphertext;
+    pkt.ciphertext = ciphertext;
     pkt.cipher_len = cipherlen;
     pkt.iv = this->iv;
     generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
@@ -251,7 +249,6 @@ bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
     data = nullptr;
 	return true;
 }
-
 
 // check if password is ok and extract the private key 
 bool Client::extract_private_key(string _username, string password){
@@ -760,13 +757,17 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
             cerr<<"Failed malloc of to_encrypt"<<endl;
             return -1;
         }
+        
         uint32_t cnt = 0;
+        pkt.code = htons(pkt.code);
         memcpy(to_encrypt,&pkt.code,sizeof(pkt.code));
         cnt += sizeof(pkt.code);
 
+        pkt.counter = htonl(pkt.counter);
         memcpy(to_encrypt + cnt ,&pkt.counter,sizeof(pkt.counter));
         cnt += sizeof(pkt.counter);
 
+        pkt.msg_len = htonl(pkt.msg_len);
         memcpy(to_encrypt + cnt ,&pkt.msg_len,sizeof(pkt.msg_len));
         cnt += sizeof(pkt.msg_len);
 

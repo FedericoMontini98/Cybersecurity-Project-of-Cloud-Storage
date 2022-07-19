@@ -183,9 +183,6 @@ bool Worker::encrypted_file_receive(uint32_t size, string filename, uint32_t& co
             return -2;
         }
 
-        if(DEBUG)
-            cout<<"PLAINTEXT RECEIVED: "<<plaintxt<<endl;
-
         //Parsing and pkt parameters setting, it also free 'plaintxt'
         if(!pkt.deserialize_plaintext(plaintxt)){
             cerr<<"Received wrong message type!"<<endl;

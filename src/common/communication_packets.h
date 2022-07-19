@@ -124,7 +124,7 @@ struct generic_message_file{
     unsigned char* iv;
     uint32_t cipher_len;
     uint8_t* ciphertext;
-    unsigned char* HMAC;
+    uint8_t* HMAC;
 
     /**
      * @brief message deserialization, sets iv (TO FREE), cipherlen, ciphertext and HMAC (TO FREE)
@@ -152,7 +152,7 @@ struct generic_message_file{
         memcpy(ciphertext, serialized_pkt + pointer_counter, cipher_len);
         pointer_counter += cipher_len;
 
-        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
+        HMAC = (uint8_t*)malloc(HMAC_LENGTH);
         memset(HMAC,0,HMAC_LENGTH);
         // copy of the ciphertext
         memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);

@@ -234,8 +234,8 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC_for_files(){
     this->iv = rcvd_pkt.iv;
 
     uint32_t MAC_len; 
-    unsigned char*  MACStr;
-    unsigned char* HMAC;
+    uint8_t*  MACStr;
+    uint8_t* HMAC;
 
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
 	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
