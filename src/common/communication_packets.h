@@ -150,7 +150,7 @@ struct generic_message_file{
         // copy of the ciphertext
         ciphertext = (uint8_t*)malloc(cipher_len);
         memset(ciphertext,0,cipher_len);
-        
+
         memcpy(ciphertext, serialized_pkt + pointer_counter, cipher_len);
         pointer_counter += cipher_len;
 
@@ -982,11 +982,6 @@ struct file_upload
 
         msg = (uint8_t*)malloc(msg_len);
         memcpy(msg, serialized_decrypted_pkt + pointer_counter, msg_len);
-
-        for (int i = 0; i<msg_len; i++){
-            std::cout << static_cast<unsigned int>(msg[i]) << std::flush;
-        }
-        cout << endl;
 
         free(serialized_decrypted_pkt);
         return true;

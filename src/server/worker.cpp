@@ -447,7 +447,7 @@ int Worker::cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsi
 			cerr << "ERR: malloc plaintext failed" << endl;
 			throw 1;
 		}
-
+		memset(plaintext,0,cipherlen);
         // context definition
         ctx = EVP_CIPHER_CTX_new();
         if (!ctx) {

@@ -185,7 +185,7 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
 bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
 	// Generic Packet
 	generic_message_file pkt;
-
+    cout<<"buffer len: "<<msg_len<<endl;
 	unsigned char* ciphertext;
     int cipherlen;
 	// Encryption
@@ -195,7 +195,7 @@ bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
         ciphertext = nullptr;
         return false;
     }
-
+    cout<<"ciphertxt length: "<<cipherlen<<endl;
 	// Get the HMAC
     uint32_t MAC_len; 
     uint8_t*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
@@ -240,6 +240,7 @@ bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
         data = nullptr;
         return false;
     }
+
     free(MACStr);
     MACStr = nullptr;
     free(ciphertext);
@@ -299,6 +300,9 @@ bool Client::send_message(void* msg, const uint32_t len){
     
     // send message
     ret = send (session_socket, msg, len, 0);
+
+    if(DEBUG)
+        cout<<ret<<" bytes sent"<<endl;
 
     // -1 error, if returns 0 no bytes are sent
     if (ret <= 0){
@@ -740,7 +744,13 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
 
         ret = fread(buffer,1, to_send, file);
 
-        cout<<"read: "<<ret<<" bytes"<<endl;
+        if(ret != to_send && DEBUG){
+            cerr<<"Error: to send="<<to_send<<" and ret="<<ret<<endl;
+        }
+
+        if(DEBUG)
+            cout<<"read: "<<ret<<" bytes"<<endl;
+
         if ( ferror(file) != 0 ){
             std::cerr << "ERR: file reading error occured" << endl;
             return -1;
@@ -752,12 +762,14 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
         pkt.counter = counter;
         pkt.msg_len = ret;
         pkt.msg = buffer;
-
-        uint8_t* to_encrypt = (uint8_t*)malloc(sizeof(pkt.code) + sizeof(pkt.counter) + sizeof(pkt.msg_len) + ret);
+        long size = sizeof(pkt.code) + sizeof(pkt.counter) + sizeof(pkt.msg_len) + ret;
+        uint8_t* to_encrypt = (uint8_t*)malloc(size);
         if(to_encrypt == nullptr){
             cerr<<"Failed malloc of to_encrypt"<<endl;
             return -1;
         }
+
+        memset(to_encrypt,0,size);
         
         uint32_t cnt = 0;
         pkt.code = htons(pkt.code);
@@ -775,18 +787,18 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
         memcpy(to_encrypt + cnt ,buffer,ret);
 
         //Send the fragment
-        if(!encrypt_generate_HMAC_and_send(to_encrypt, ret)){
+        if(!encrypt_generate_HMAC_and_send(to_encrypt, size)){
             cerr<<"Error during encrypt_generate_HMAC_and_send of fragment n°"<<i+1<<endl;
             return -1;
         }
-
         counter++;
+        free(to_encrypt);
         memset(buffer,0,FILE_FRAGMENTS_SIZE);
     }
     fclose(file);
     free(buffer);
     return 0;
-}
+}  
 
 /**
  * @brief Manage the file upload
