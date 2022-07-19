@@ -12,6 +12,7 @@
 #include "./../common/communication_packets.h"
 #include <sys/stat.h>
 #include <math.h>
+#include <dirent.h>
 
 # define DEBUG true
 # define BACKLOG_QUEUE_SIZE  10

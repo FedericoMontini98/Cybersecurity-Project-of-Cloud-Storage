@@ -618,8 +618,10 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
                 // we put the data into the pkt
                 response_pkt.response_output = files;
                 
-                cout<<"files "<<files<<endl;
-                cout<<"response_pkt.response_output "<<response_pkt.response_output<<endl;
+                if(DEBUG){
+                    cout<<"files "<<files<<endl;
+                    cout<<"response_pkt.response_output "<<response_pkt.response_output<<endl;
+                }
                 response_pkt.response = 2;
                 cout << "LIST SUCCESS on user: " + logged_user << endl;
             } 
@@ -683,13 +685,13 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
             // Prepare the plaintext to encrypt
             pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
             + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
-            + "$" + to_string(response_pkt.counter);
+            + "$" + to_string(response_pkt.counter) + "$";
         }
         else if (response_pkt.response == 2){
             // Prepare the plaintext to encrypt with response_output
             pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
             + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
-            + "$" + to_string(response_pkt.counter) + "$" + response_pkt.response_output;
+            + "$" + to_string(response_pkt.counter) + "$" + response_pkt.response_output + "$";
         }
 
         //Send the feedback message
@@ -708,13 +710,13 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
             // Prepare the plaintext to encrypt
             pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
             + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
-            + "$" + to_string(response_pkt.counter);
+            + "$" + to_string(response_pkt.counter) + "$";
         }
         else if (response_pkt.response == 2){
             // Prepare the plaintext to encrypt with response_output
             pt = to_string(response_pkt.code) + "$" + to_string(response_pkt.simple_op_code) + "$" 
             + to_string(response_pkt.filename_len) + "$" + response_pkt.filename + "$" + to_string(response_pkt.response) 
-            + "$" + to_string(response_pkt.counter) + "$" + response_pkt.response_output;
+            + "$" + to_string(response_pkt.counter) + "$" + response_pkt.response_output + "$";
         }
 
         //Send the feedback message

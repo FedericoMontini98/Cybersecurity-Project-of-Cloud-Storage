@@ -1242,7 +1242,7 @@ struct bootstrap_simple_operation{
         if (response == 2){
             pos = s.find(delimiter);
             string i = s.substr(0, pos);
-            response_output = stoi(i);
+            response_output = i;
             s.erase(0, pos + delimiter.length());
         }
 
