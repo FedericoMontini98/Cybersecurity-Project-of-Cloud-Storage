@@ -1047,74 +1047,6 @@ struct end_download{
     string response;
     uint32_t counter;
 
-    void *serialize_message(int &len)
-    {
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (sizeof(cipher_len) + cipher_len + HMAC_LENGTH + IV_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-
-        uint32_t certif_ciph_len = htonl(cipher_len);
-        memset(serialized_pkt,0,len);
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;        
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
-    }
-
-    bool deserialize_message(uint8_t *serialized_pkt)
-    {
-        int pointer_counter = 0;
-
-        iv = (unsigned char*)malloc(IV_LENGTH);
-        memset(iv,0,IV_LENGTH);
-        // copy of the iv
-        memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
-        pointer_counter += IV_LENGTH;        
-
-        // copy of the ciphertext length
-        memcpy(&cipher_len, serialized_pkt + pointer_counter, sizeof(cipher_len));
-        cipher_len = ntohl(cipher_len);
-        pointer_counter += sizeof(cipher_len);
-
-        // copy of the ciphertext
-        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
-        pointer_counter += cipher_len;
-
-        HMAC = (unsigned char *)malloc(HMAC_LENGTH);
-        memset(HMAC,0,HMAC_LENGTH);
-        // copy of the ciphertext
-        memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        free(serialized_pkt);
-
-        return true;
-    }
-
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
         unsigned int pos;
         string s = (char*)serialized_decrypted_pkt;
@@ -1152,7 +1084,52 @@ struct end_download{
 
 /*********************************************************************************************************************************/
 
+#define EXIT_OP 15
+struct exit_op{
+    // Sent through the net
+    unsigned char* iv;
+    uint32_t cipher_len;
+    string ciphertext;
+    unsigned char* HMAC;
 
+    //plaintext field
+    uint16_t code;
+    string response;
+    uint32_t counter;
+
+        bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
+        unsigned int pos;
+        string s = (char*)serialized_decrypted_pkt;
+        string delimiter = "$";
+
+        // Extract the CODE
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            code = stoi(i);
+            if(code!=FILE_DL_HS){
+                return false;
+            }
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the response
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            response = s.substr(0, pos);
+            s.erase(0, pos + delimiter.length());
+        }
+        // Extract the counter
+        pos = s.find(delimiter);
+        if(pos!=string::npos){
+            string i = s.substr(0, pos);
+            counter = stoi(i);
+            s.erase(0, pos + delimiter.length());
+        }
+
+        free(serialized_decrypted_pkt);
+        return true;
+    }
+};
 
 /*********************************************************************************************************************************/
 

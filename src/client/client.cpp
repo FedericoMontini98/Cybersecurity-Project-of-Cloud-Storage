@@ -1429,163 +1429,175 @@ void Client::help(){
  * @return int: exit param
  */
 int Client::upload(string username){
-    uint32_t counter = 0;
-    cout<<"**********************************************"<<endl;
-    cout<<"Which file do you want to upload on the cloud?"<<endl;
-    cout<<"**********************************************"<<endl<<endl;
-    string filename;
-    cin>>filename;
+    try{
+        uint32_t counter = 0;
+        cout<<"**********************************************"<<endl;
+        cout<<"Which file do you want to upload on the cloud?"<<endl;
+        cout<<"**********************************************"<<endl<<endl;
+        string filename;
+        cin>>filename;
 
-    if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
-        std::cerr << "ERR: command check on whitelist fails"<<endl;
-        return -1;
+        if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
+            std::cerr << "ERR: command check on whitelist fails"<<endl;
+            throw -1;
+        }
+
+        //I need to be sure that no other file is in Download directory with the same name
+
+        //filename is a string composed from whitelisted chars, so no path traversal allowed (see the cycle at 724)
+        //We can proceed to check the existance of the file
+        uint32_t size_file = file_exists(filename,username);
+        if(size_file==0){
+            cout<<"Error during upload"<<endl;
+            cout<<"*******************"<<endl;
+            throw -1;
+        }
+
+        /****************************************************************************************/
+        /******* Phase 1: send filename, file length and other initialization parameters ********/
+
+        //Phase needed to check if on the server is present another file with the same name of the one that the user want to upload
+        //The server will send an ACK or NACK depending on its disponibility to recive the file
+
+        //Packet initialization
+        bootstrap_upload pkt;
+        pkt.code = BOOTSTRAP_UPLOAD;
+        pkt.filename = filename;
+        pkt.filename_len = strlen(filename.c_str());
+        pkt.response = 0;
+        pkt.counter = counter;
+        pkt.size = size_file;
+
+        // Prepare the plaintext to encrypt
+        string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size);
+
+        if(!encrypt_generate_HMAC_and_send(buffer)){
+            cerr<<"Error during encryption and send of MSG#1 of Upload"<<endl;
+            throw -1;
+        }
+
+        counter++;
+        cout<<"***********************************************"<<endl;
+        /***************************************************************************************/
+        // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
+
+        //Receive the message, check the HMAC validity and decrypt the ciphertext
+        unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
+
+        if(plaintxt == nullptr){
+            cerr<<"Error during receive_decrypt_and_verify_HMAC of MSG#2"<<endl;
+            throw 1;   //SOMETHING WRONG DURING RECEIVE, SEND AN END OF OPERATION MESSAGE
+        }
+
+        // Expected packet type
+        bootstrap_upload rcvd_pkt;
+
+        //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
+        if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
+            cerr<<"Received wrong message type!"<<endl;
+            return -1;    //RECEIVED WRONG TYPE MESSAGE => TYPE EXIT OP
+        }
+
+        if(DEBUG){
+            cout<<"You received the following cripted message: "<<endl;
+            cout<<"Code: "<<rcvd_pkt.code<<";\n filename_len:"<<rcvd_pkt.filename_len<<";\n filename:"<<rcvd_pkt.filename<<";\n counter:"<<rcvd_pkt.counter<<";\n size: "<<rcvd_pkt.size<<endl;
+        }
+        // Check on rcvd packets values
+        if( rcvd_pkt.counter != counter ){
+            cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
+            throw 1;    //SOMETHING WRONG DURING RECEIVE, SEND AN END OF OPERATION MESSAGE
+        }
+        if(DEBUG){
+            cout<<"Counter with good value"<<endl;
+        }
+        // Check the response of the server
+        if( rcvd_pkt.response != 1){
+            cerr<<"There is already a file with the same name on the server! Rename or delete it before uploading a new one"<<endl;
+            return -2;      //OPERATION ENDED -> NEGATIVE RESPONSE FROM SERVER
+        }
+        if(DEBUG){
+            cout<<"Affirmative response"<<endl;
+        }
+        counter++;
+        // If the server response is '1' the server is now ready to obtain the file
+        /***************************************************************************************/
+        // *************************** PHASE 2 SEND THE FILE: MSG 3 ************************** //
+
+        cout<<"***********************************************"<<endl;
+        cout<<"*********HANDLE FILE TRANSFER PHASE************"<<endl;
+        cout<<"***********************************************"<<endl;
+
+        if(send_encrypted_file(filename, counter) != 0){
+            cerr<<"error during the upload of the file"<<endl;
+            throw 1;  //SOMETHING WRONG DURING FILE EXCANGE, SEND AN END OF OPERATION MESSAGE
+        }
+        cout<<"***********************************************"<<endl;
+        cout<<"********FILE TRANSFER PHASE COMPLETED**********"<<endl;
+        cout<<"***********************************************"<<endl;
+
+        /***************************************************************************************/
+        // ******************************* SEND EOF NOTIF: MSG 4 ***************************** //
+
+        end_upload pkt_end_1;
+        pkt_end_1.code = FILE_EOF_HS;
+        pkt_end_1.response = "END";
+        pkt_end_1.counter = counter;
+
+        // Prepare the plaintext to encrypt
+        buffer =  to_string(pkt_end_1.code) + "$" + pkt_end_1.response + "$" + to_string(pkt_end_1.counter);
+
+        if(!encrypt_generate_HMAC_and_send(buffer)){
+            cerr<<"Error during encryption and send of MSG#4 of Upload"<<endl;
+            throw 1;    //FILE EXCHANGED BUT SOMETHING WRONG DURING EOF HS, SEND AN END OF OPERATION MESSAGE
+        }
+        counter++;
+        cout<<"***********************************************"<<endl;
+        /***************************************************************************************/
+        // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 5 ******************** //
+
+        plaintxt = receive_decrypt_and_verify_HMAC();
+
+        if(plaintxt == nullptr){
+            cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
+            throw 1;  //SOMETHING WRONG DURING EOF HS RECEIVE, SEND AN END OF OPERATION MESSAGE
+        }
+
+        end_upload pkt_end_2;
+
+        //Parsing and pkt parameters setting, it also FREE(plaintxt)
+        if(!pkt_end_2.deserialize_plaintext(plaintxt)){
+            cerr<<"Received wrong message type!"<<endl;
+            return -1;
+        }
+
+        if(DEBUG){
+            cout<<"You received the following cripted message: "<<endl;
+            cout<<"Code: "<<pkt_end_2.code<<";\n filename:"<<pkt_end_2.response<<";\n counter:"<<pkt_end_2.counter<<endl;
+        }
+
+        // Check on rcvd packets values
+        if( pkt_end_2.counter != counter ){
+            cerr<<"Wrong counter value, we received: "<<pkt_end_2.counter<<" instead of: "<<counter<<endl;
+            throw 1;    //SOMETHING WRONG DURING RECEIVE, SEND AN END OF OPERATION MESSAGE
+        }
+
+        // Check the response of the server
+        if(strcmp(pkt_end_2.response.c_str(),"OK") != 0){
+            cerr<<"There was a problem during the finalization of the upload!"<<endl;
+            return -1;
+        }
     }
-
-    //I need to be sure that no other file is in Download directory with the same name
-
-    //filename is a string composed from whitelisted chars, so no path traversal allowed (see the cycle at 724)
-    //We can proceed to check the existance of the file
-    uint32_t size_file = file_exists(filename,username);
-    if(size_file==0){
-        cout<<"Error during upload"<<endl;
-        cout<<"*******************"<<endl;
-        return -1;
+    catch(int errorCode){
+        cout<<"***************************************************************************************"<<endl;
+        cout<<"***************************** THE UPLOAD HAS FAILED ***********************************"<<endl;
+        if(errorCode == -1){
+            return -2;
+        }
+        if(errorCode == 10){
+            return -3;
+        }
+        
     }
-
-    /****************************************************************************************/
-    /******* Phase 1: send filename, file length and other initialization parameters ********/
-
-    //Phase needed to check if on the server is present another file with the same name of the one that the user want to upload
-    //The server will send an ACK or NACK depending on its disponibility to recive the file
-
-    //Packet initialization
-    bootstrap_upload pkt;
-    pkt.code = BOOTSTRAP_UPLOAD;
-    pkt.filename = filename;
-    pkt.filename_len = strlen(filename.c_str());
-    pkt.response = 0;
-    pkt.counter = counter;
-    pkt.size = size_file;
-
-    // Prepare the plaintext to encrypt
-    string buffer = to_string(pkt.code) + "$" + to_string(pkt.filename_len) + "$" + filename + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter) + "$" + to_string(pkt.size);
-
-    if(!encrypt_generate_HMAC_and_send(buffer)){
-        cerr<<"Error during encryption and send of MSG#1 of Upload"<<endl;
-        return -1;
-    }
-
-    counter++;
-    cout<<"***********************************************"<<endl;
-    /***************************************************************************************/
-    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
-
-    //Receive the message, check the HMAC validity and decrypt the ciphertext
-    unsigned char* plaintxt = receive_decrypt_and_verify_HMAC();
-
-    if(plaintxt == nullptr){
-        cerr<<"Error during receive_decrypt_and_verify_HMAC of MSG#2"<<endl;
-        return -2;
-    }
-
-    // Expected packet type
-    bootstrap_upload rcvd_pkt;
-
-    //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
-    if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
-        cerr<<"Received wrong message type!"<<endl;
-        return -2;
-    }
-
-    if(DEBUG){
-        cout<<"You received the following cripted message: "<<endl;
-        cout<<"Code: "<<rcvd_pkt.code<<";\n filename_len:"<<rcvd_pkt.filename_len<<";\n filename:"<<rcvd_pkt.filename<<";\n counter:"<<rcvd_pkt.counter<<";\n size: "<<rcvd_pkt.size<<endl;
-    }
-    // Check on rcvd packets values
-    if( rcvd_pkt.counter != counter ){
-        cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
-        return -2;
-    }
-    if(DEBUG){
-        cout<<"Counter with good value"<<endl;
-    }
-    // Check the response of the server
-    if( rcvd_pkt.response != 1){
-        cerr<<"There is already a file with the same name on the server! Rename or delete it before uploading a new one"<<endl;
-        return -2;
-    }
-    if(DEBUG){
-        cout<<"Affirmative response"<<endl;
-    }
-    counter++;
-    // If the server response is '1' the server is now ready to obtain the file
-    /***************************************************************************************/
-    // *************************** PHASE 2 SEND THE FILE: MSG 3 ************************** //
-    
-    cout<<"***********************************************"<<endl;
-    cout<<"*********HANDLE FILE TRANSFER PHASE************"<<endl;
-    cout<<"***********************************************"<<endl;
-
-    if(send_encrypted_file(filename, counter) != 0){
-        cerr<<"error during the upload of the file"<<endl;
-        return -3;
-    }
-    cout<<"***********************************************"<<endl;
-    cout<<"********FILE TRANSFER PHASE COMPLETED**********"<<endl;
-    cout<<"***********************************************"<<endl;
-
-    /***************************************************************************************/
-    // ******************************* SEND EOF NOTIF: MSG 4 ***************************** //
-
-    end_upload pkt_end_1;
-    pkt_end_1.code = FILE_EOF_HS;
-    pkt_end_1.response = "END";
-    pkt_end_1.counter = counter;
-
-    // Prepare the plaintext to encrypt
-    buffer =  to_string(pkt_end_1.code) + "$" + pkt_end_1.response + "$" + to_string(pkt_end_1.counter);
-
-    if(!encrypt_generate_HMAC_and_send(buffer)){
-        cerr<<"Error during encryption and send of MSG#4 of Upload"<<endl;
-        return -4;
-    }
-    counter++;
-    cout<<"***********************************************"<<endl;
-    /***************************************************************************************/
-    // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 5 ******************** //
-    
-    plaintxt = receive_decrypt_and_verify_HMAC();
-
-    if(plaintxt == nullptr){
-        cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
-        return -5;
-    }
-
-    end_upload pkt_end_2;
-
-    //Parsing and pkt parameters setting, it also FREE(plaintxt)
-    if(!pkt_end_2.deserialize_plaintext(plaintxt)){
-        cerr<<"Received wrong message type!"<<endl;
-        return -5;
-    }
-
-    if(DEBUG){
-        cout<<"You received the following cripted message: "<<endl;
-        cout<<"Code: "<<pkt_end_2.code<<";\n filename:"<<pkt_end_2.response<<";\n counter:"<<pkt_end_2.counter<<endl;
-    }
-
-    // Check on rcvd packets values
-    if( pkt_end_2.counter != counter ){
-        cerr<<"Wrong counter value, we received: "<<pkt_end_2.counter<<" instead of: "<<counter<<endl;
-        return -5;
-    }
-
-    // Check the response of the server
-    if(strcmp(pkt_end_2.response.c_str(),"OK") != 0){
-        cerr<<"There was a problem during the finalization of the upload!"<<endl;
-        return -5;
-    }
-
     cout<<"***************************************************************************************"<<endl;
     cout<<"************************ THE UPLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
 
