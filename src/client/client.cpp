@@ -1534,11 +1534,9 @@ int Client::upload(string username){
             }
         }
 
-        cout<<"-------------------------------------------------------"<<endl<<endl;
     }
     
     cout<<"THE UPLOAD HAS BEEN SUCCESSFUL!"<<endl;
-    cout<<"-------------------------------------------------------"<<endl<<endl;
 
     return 0;
 }
@@ -1713,12 +1711,10 @@ int Client::download(string username){
             }
         }
 
-        cout<<"-------------------------------------------------------"<<endl<<endl;
 
     }
 
     cout<<"THE DOWNLOAD HAS BEEN SUCCESSFUL!"<<endl;
-    cout<<"-------------------------------------------------------"<<endl<<endl;
 
     return 0;
 }
