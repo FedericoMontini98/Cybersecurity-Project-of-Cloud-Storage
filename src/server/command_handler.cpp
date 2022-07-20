@@ -27,7 +27,7 @@ int Worker::handle_command(unsigned char* received_mes) {
             throw 0;
         }
         memcpy(MACStr, first_pkt.iv, IV_LENGTH);
-        memcpy(MACStr + 16,(void*)first_pkt.ciphertext.c_str(),first_pkt.cipher_len);
+        memcpy(MACStr + 16,(void*)first_pkt.ciphertext,first_pkt.cipher_len);
 
         //Generate the HMAC on the receiving side iv||ciphertext
         generate_HMAC(MACStr,IV_LENGTH + first_pkt.cipher_len, HMAC,MAC_len);
@@ -41,7 +41,7 @@ int Worker::handle_command(unsigned char* received_mes) {
         }
 
         //Decrypt the ciphertext and obtain the plaintext
-        if(cbc_decrypt_fragment((unsigned char* )first_pkt.ciphertext.c_str(),first_pkt.cipher_len, plaintxt,ptlen)!=0){
+        if(cbc_decrypt_fragment((unsigned char* )first_pkt.ciphertext,first_pkt.cipher_len, plaintxt,ptlen)!=0){
             cerr<<"Error during the decryption of the first packet"<<endl;
             throw 2;
         }
@@ -794,8 +794,6 @@ int Worker::logout (bootstrap_logout pkt){
     symmetric_key = nullptr;
     secure_free(hmac_key, hmac_key_length);
     hmac_key = nullptr;
-    EVP_PKEY_free(private_key);
-    private_key = nullptr;
 
     cout << "KEYS FREED CORRECTLY, LOGOUT OF " + logged_user << endl << endl;
 
