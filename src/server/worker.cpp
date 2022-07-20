@@ -23,14 +23,6 @@ int Worker::generate_HMAC(unsigned char* msg, size_t msg_len, unsigned char*& di
 
 }
 
-
-// to test serialization
-/*void debug_serialize_pkt(uint8_t* buffer){
-    login_bootstrap_pkt pkt;
-    pkt.deserialize_message((uint8_t*) buffer);
-    exit(EXIT_FAILURE);
-}*/
-
 // send a message through socket 
 bool Worker::send_message(void* msg, const uint32_t len){
     
@@ -678,6 +670,11 @@ bool Worker::check_username(string username){
 	ifstream file("users.txt");
     vector<string> users;
     string str;
+
+	if (strlen(username.c_str()) > 30){
+		std::cerr << "ERR: username is too long"<<endl;
+        return false;
+	}
 	
 	if (username.find_first_not_of(USERNAME_WHITELIST_CHARS) != std::string::npos)
     {

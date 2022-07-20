@@ -1048,23 +1048,24 @@ bool Client::init_socket(){
 	return true;
 }
 
+// initialize a session with the server
 bool Client::init_session(){
     int ret;
 	login_bootstrap_pkt bootstrap_pkt;
 	login_authentication_pkt server_auth_pkt; 
 	login_authentication_pkt client_auth_pkt;
-	unsigned char* symmetric_key_no_hashed; // TO FREE
-	unsigned char* hmac_key_no_hashed; // TO FREE
-	unsigned char* plaintext; // TO FREE
+	unsigned char* symmetric_key_no_hashed; 
+	unsigned char* hmac_key_no_hashed; 
+	unsigned char* plaintext; 
 	int plainlen;
-	unsigned char* signed_text; // TO FREE
+	unsigned char* signed_text; 
 	int signed_text_len;
 	EVP_PKEY* server_pubk;
-	X509* ca_cert;
-	X509_CRL* ca_crl;
+	X509* ca_cert; 
+	X509_CRL* ca_crl; 
 	
 	// receive buffer
-	unsigned char* receive_buffer; // TO FREE
+	unsigned char* receive_buffer; 
     uint32_t len;
 
     cout<<"INITIALIZE SESSION."<<endl<<endl;

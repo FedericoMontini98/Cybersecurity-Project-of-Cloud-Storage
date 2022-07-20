@@ -593,10 +593,25 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
     response_pkt.counter = counter;
 
     try {
+
+        if (strlen(pkt.filename.c_str()) > 30 ){
+            throw 0;
+        }
+
+        if (strlen(pkt.renamed_filename.c_str()) > 30 ){
+            throw 0;
+        }
+
         if (pkt.filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
         {
             cerr << "ERR: filename check on whitelist fails"<<endl;
-            throw 1;
+            throw 0;
+        }
+
+        if (pkt.renamed_filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
+        {
+            cerr << "ERR: filename check on whitelist fails"<<endl;
+            throw 0;
         }
 
         /**********************************************************/
@@ -723,6 +738,10 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
         }
     }
     catch(int error_code){
+
+        if (error_code == 0){
+            return -1;
+        }
 
         if(DEBUG)
             cout << "counter is:" + counter << endl;
