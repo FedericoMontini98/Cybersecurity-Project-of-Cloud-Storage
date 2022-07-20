@@ -6,7 +6,7 @@
  * @return the genereted key on success or NULL in the other cases
  */
  
-# define DEBUG true
+# define DEBUG false
 
 EVP_PKEY* generate_dh_key(){
 	EVP_PKEY* dh_params = nullptr;

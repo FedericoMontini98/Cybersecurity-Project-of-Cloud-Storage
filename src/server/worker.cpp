@@ -339,7 +339,9 @@ bool Worker::encrypt_generate_HMAC_and_send(string buffer){
 bool Worker::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
 	// Generic Packet
 	generic_message_file pkt;
-    cout<<"buffer len: "<<msg_len<<endl;
+    if(DEBUG){
+        cout<<"buffer len: "<<msg_len<<endl;
+    }
 	unsigned char* ciphertext;
     int cipherlen;
 	// Encryption
@@ -349,7 +351,9 @@ bool Worker::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
         ciphertext = nullptr;
         return false;
     }
-    cout<<"ciphertxt length: "<<cipherlen<<endl;
+	if(DEBUG){
+    	cout<<"ciphertxt length: "<<cipherlen<<endl;
+	}
 	// Get the HMAC
     uint32_t MAC_len; 
     uint8_t*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
@@ -1158,8 +1162,12 @@ void Worker::run (){
             exit(EXIT_FAILURE);
         }
 		
+		
+
 		// handle command, it also free recv_buffer
 		ret = handle_command(recv_buffer);
+
+		cout<<"-------------------------------------------------------"<<endl<<endl;
 
 		if (ret == BOOTSTRAP_LOGOUT){
 			break;

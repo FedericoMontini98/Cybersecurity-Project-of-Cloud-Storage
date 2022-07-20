@@ -10,9 +10,9 @@ int Worker::handle_command(unsigned char* received_mes) {
     int code;
 
     generic_message first_pkt;
-    cout<<"****************************************************"<<endl;
-    cout<<"****************COMMAND HANDLER*********************"<<endl;
-    cout<<"****************************************************"<<endl;
+    cout<<"**************************************************************"<<endl;
+    cout<<"*********************** COMMAND HANDLER **********************"<<endl;
+    cout<<"**************************************************************"<<endl<<endl;
 	try {
         
         if(!first_pkt.deserialize_message(received_mes)){
@@ -52,8 +52,6 @@ int Worker::handle_command(unsigned char* received_mes) {
             throw 0;
         }
 
-        cout<<"qui"<<endl;
-
         /*********  FREE HOW TO HANDLE ********/
         switch(code) {
             /**************************************************************************************/
@@ -84,14 +82,12 @@ int Worker::handle_command(unsigned char* received_mes) {
             // delete, rename, list
             case BOOTSTRAP_SIMPLE_OPERATION:
             {
-                cout<<"qui2"<<endl;
                 bootstrap_simple_operation pkt_simple;
                 //Parsing and pkt parameters setting, it also free 'plaintxt'
                 if(!pkt_simple.deserialize_plaintext(plaintxt)){
                     cerr<<"Received wrong message type!"<<endl;
                     throw 0;
                 }
-                cout<<"qui3"<<endl;
                 int ret = simple_operation(pkt_simple);
                 return ret;
             }
@@ -246,12 +242,12 @@ int Worker::send_encrypted_file (string filename, uint32_t& counter){
     // If !file the file cant be open or is not present inside the dir
     if (!file){
         cerr<<"Error during file opening"<<endl;
-        return false;
+        return -1;
     }
     struct stat buf;
     if (stat(path.c_str(),&buf)!=0){ //stat failed
         cout<<"Failed stat function: File doesn't exists in the Upload dir"<<endl;
-        return 0;
+        return -1;
     }
 
     //Calculate the number of chunks to send
@@ -347,6 +343,9 @@ int Worker::send_encrypted_file (string filename, uint32_t& counter){
  */
 int Worker::upload(bootstrap_upload pkt){
     uint32_t counter = pkt.counter;
+    cout<<"-------------------------------------------------------"<<endl;
+    cout<<"UPLOAD COMMAND RECEIVED BY USER: " + logged_user<<endl;
+
     if(DEBUG){
         cout<<"Received an upload packet with the following fields: "<<endl;
         cout<<"code: "<<pkt.code<<"\nfilename_len: "<<pkt.filename_len<<"\n filename: "<<pkt.filename<<"\n response: "<<pkt.response<<"\n counter: "<<counter<<"\n size: "<<pkt.size<<endl;
@@ -360,7 +359,6 @@ int Worker::upload(bootstrap_upload pkt){
 
     /**********************************************************/
     /******* Phase 1: received iv + encrypt_msg + HMAC ********/
-    cout<<"***********************************************"<<endl;
     counter = counter +1;
     bootstrap_upload response_pkt;
 
@@ -389,12 +387,10 @@ int Worker::upload(bootstrap_upload pkt){
 
     if(response_pkt.response == 0){
         cout<<"Upload aborted due to a duplicated name"<<endl;
-        cout<<"***********************************************"<<endl;
         return -1;
     }
 
     counter++;
-    cout<<"***********************************************"<<endl;
     /**********************************************************/
     /*************** Phase 2: receive the file ****************/
 
@@ -402,7 +398,6 @@ int Worker::upload(bootstrap_upload pkt){
         cerr<<"Phase 2 failed: error during file upload"<<endl;
         return -3;
     }
-    cout<<"***********************************************"<<endl;
     /**********************************************************/
     /**************** Phase 3: EOF Handshake ******************/
 
@@ -439,7 +434,6 @@ int Worker::upload(bootstrap_upload pkt){
     }
 
     counter++;
-    cout<<"***********************************************"<<endl;
     /*******************************************************************************/
     /**************************** LAST MESSAGE *************************************/
 
@@ -456,9 +450,7 @@ int Worker::upload(bootstrap_upload pkt){
         return -5;
     }
 
-    cout<<"***************************************************************************************"<<endl;
-    cout<<"************************ THE UPLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
-
+    cout << "UPLOAD SUCCESS for file: " + pkt.filename << endl;
 
     return 0;
 }
@@ -471,6 +463,9 @@ int Worker::upload(bootstrap_upload pkt){
  */
 int Worker::download(bootstrap_download pkt){
     uint32_t counter = pkt.counter;
+    cout<<"-------------------------------------------------------"<<endl;
+    cout<<"DOWNLOAD COMMAND RECEIVED BY USER: " + logged_user<<endl;
+
     if(DEBUG){
         cout<<"Received an upload packet with the following fields: "<<endl;
         cout<<"code: "<<pkt.code<<"\nfilename_len: "<<pkt.filename_len<<"\n filename: "<<pkt.filename<<"\n counter: "<<counter<<"\n size: "<<pkt.size<<endl;
@@ -565,8 +560,8 @@ int Worker::download(bootstrap_download pkt){
         return -5;
     }
 
-    cout<<"***************************************************************************************"<<endl;
-    cout<<"************************ THE DOWNLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
+    cout << "DOWNLOAD SUCCESS for file: " + pkt.filename << endl;
+    
 
     return 0;
 }
@@ -582,7 +577,7 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
         cout<<"Received an simple_operation packet with the following fields: "<<endl;
         cout<<"Code: "<<pkt.code<<";\n simple_code_op:"<<pkt.simple_op_code<<";\n filename_len:"<<pkt.filename_len<<";\n filename:"<<pkt.filename<<";\n counter:"<<pkt.counter<<endl;
     }
-
+    cout<<"-------------------------------------------------------"<<endl;
     counter = counter + 1;
     response_pkt.code = BOOTSTRAP_SIMPLE_OPERATION;
     response_pkt.simple_op_code = pkt.simple_op_code;
@@ -616,10 +611,11 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
 
         /**********************************************************/
         /******* Phase 1: received iv + encrypt_msg + HMAC ********/
-        cout<<"***********************************************"<<endl;
-
+        
         // filename is -- in this case
         if (pkt.simple_op_code == BOOTSTRAP_LIST){
+
+            cout<<"LIST COMMAND RECEIVED BY USER: " + logged_user<<endl;
             // getting the path of a user
             string path = FILE_PATH + this->logged_user + "/";
             string files = "";
@@ -654,7 +650,7 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
                     cout<<"response_pkt.response_output "<<response_pkt.response_output<<endl;
                 }
                 response_pkt.response = 2;
-                cout << "LIST SUCCESS on user: " + logged_user << endl;
+                cout << "LIST SUCCESS"<< endl;
             } 
             else {
                 cerr << "Error in listing all the file, list fails" << endl;
@@ -664,11 +660,14 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
         }
 
         else if (pkt.simple_op_code == BOOTSTRAP_RENAME){
-
+            
+            cout<<"RENAME COMMAND RECEIVED BY USER: " + logged_user<<endl;
             string renamed_file = FILE_PATH + this->logged_user + "/" + pkt.renamed_filename;
 
-            cout<<"renamed_file "<<renamed_file<<endl;
-            cout<<"dir "<<dir<<endl;
+            if(DEBUG){
+                cout<<"renamed_file "<<renamed_file<<endl;
+                cout<<"dir "<<dir<<endl;
+            }
 
             //Check if there is a file with the same name inside the user dir
             if(!checkFileExistance(pkt.filename.c_str())){
@@ -683,14 +682,15 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
                     throw 2;
                 }
                 else{
-                    cout << "RENAME SUCCESS on user: " + logged_user + " for file: " + pkt.filename << endl;
+                    cout << "RENAME SUCCESS for file: " + pkt.filename << endl;
                     response_pkt.response = 1;
                 }
             }
         }
 
         else if (pkt.simple_op_code == BOOTSTRAP_DELETE){
-            // DO DELETE
+            
+            cout<<"DELETE COMMAND RECEIVED BY USER: " + logged_user<<endl;
 
             //Check if there is a file with the same name inside the user dir
             if(!checkFileExistance(pkt.filename.c_str())){
@@ -706,7 +706,7 @@ int Worker::simple_operation( bootstrap_simple_operation pkt ){
                     throw 2;
                 }
                 else{
-                    cout << "DELETE SUCCESS on user: " + logged_user + " for file: " + pkt.filename << endl;
+                    cout << "DELETE SUCCESS for file: " + pkt.filename << endl;
                     response_pkt.response = 1;
                 }
             }
@@ -788,7 +788,7 @@ int Worker::logout (bootstrap_logout pkt){
     bootstrap_simple_operation response_pkt;
     string pt;
     int ret = 0;
-
+    cout<<"-------------------------------------------------------"<<endl;
     if(DEBUG){
         cout<<"Received an logout packet with the following fields: "<<endl;
         cout<<"Code: "<<pkt.code<< "counter:"<< pkt.counter<<"response:"<< pkt.response <<endl;

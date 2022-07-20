@@ -13,7 +13,7 @@
 #include "./../common/communication_packets.h"
 
 
-# define DEBUG true
+# define DEBUG false
 # define MAX_USERNAME_LENGTH 30
 # define MIN_USERNAME_LENGTH 3
 # define MAX_FILENAME_LENGHT 30
