@@ -21,7 +21,7 @@ struct generic_message{
 
     unsigned char* iv;
     uint32_t cipher_len;
-    string ciphertext;
+    uint8_t* ciphertext;
     unsigned char* HMAC;
 
     /**
@@ -58,14 +58,22 @@ struct generic_message{
             return false;
         }
 
-        // copy of the ciphertext
-        ciphertext.assign((char *)(serialized_pkt + pointer_counter), cipher_len);
+        ciphertext = (uint8_t*)malloc(cipher_len);
+        if(!ciphertext){
+            cerr<<"error during ciphertext malloc in generic packet"<<endl;
+            free(serialized_pkt);
+            free(iv);
+            return false;
+        }
+        memset(ciphertext,0,cipher_len);
+        memcpy(ciphertext, serialized_pkt + pointer_counter, cipher_len);
         pointer_counter += cipher_len;
 
         HMAC = (unsigned char *)malloc(HMAC_LENGTH);
         if(!HMAC){
             cerr<<"error during HMAC malloc in generic packet"<<endl;
             free(serialized_pkt);
+            free(ciphertext);
             free(iv);
             return false;
         }
@@ -122,8 +130,7 @@ struct generic_message{
         pointer_counter += sizeof(certif_ciph_len);
 
         // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
+        memcpy(serialized_pkt + pointer_counter, ciphertext, cipher_len);
         pointer_counter += cipher_len;
 
         // adding the hmac

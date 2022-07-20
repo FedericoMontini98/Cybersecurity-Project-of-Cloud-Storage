@@ -162,7 +162,7 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
     }
 	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
-    memcpy(MACStr + IV_LENGTH,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
+    memcpy(MACStr + IV_LENGTH,(void*)rcvd_pkt.ciphertext,rcvd_pkt.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext
     generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
@@ -188,7 +188,7 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
     this->iv = rcvd_pkt.iv;
 
     //Decrypt the ciphertext and obtain the plaintext
-    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
+    if(cbc_decrypt_fragment((unsigned char* )rcvd_pkt.ciphertext,rcvd_pkt.cipher_len,plaintxt,ptlen)!=0){
         cout<<"Error during encryption"<<endl;
         free(MACStr);
         MACStr = nullptr;
@@ -313,7 +313,7 @@ bool Worker::encrypt_generate_HMAC_and_send(string buffer){
     memcpy(MACStr + 16,ciphertext,cipherlen);
 
 	//Initialization of the data to serialize
-    pkt.ciphertext = (const char*)ciphertext;
+    pkt.ciphertext = ciphertext;
     pkt.cipher_len = cipherlen;
     pkt.iv = this->iv;
     generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
