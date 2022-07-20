@@ -486,7 +486,7 @@ int Worker::download(bootstrap_download pkt){
         return -1;
     }
 
-    if(pkt.filename_len > 30 || pkt.filename.length()){
+    if(pkt.filename_len > 30 || pkt.filename.length() > 30){
         cerr<<"ERR: filename too long, reduce before download"<<endl;
         return -1;
     }
