@@ -355,9 +355,14 @@ int Worker::upload(bootstrap_upload pkt){
         cout<<"code: "<<pkt.code<<"\nfilename_len: "<<pkt.filename_len<<"\n filename: "<<pkt.filename<<"\n response: "<<pkt.response<<"\n counter: "<<counter<<"\n size: "<<pkt.size<<endl;
     }
 
-    if (pkt.filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
+    if(pkt.filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
     {
         cerr << "ERR: filename check on whitelist fails"<<endl;
+        return -1;
+    }
+
+    if(pkt.filename_len > 30 || pkt.filename.length() > 30){
+        cerr<<"ERR: filename too long, reduce before download"<<endl;
         return -1;
     }
 
@@ -478,6 +483,11 @@ int Worker::download(bootstrap_download pkt){
     if (pkt.filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos)
     {
         cerr << "ERR: filename check on whitelist fails"<<endl;
+        return -1;
+    }
+
+    if(pkt.filename_len > 30 || pkt.filename.length()){
+        cerr<<"ERR: filename too long, reduce before download"<<endl;
         return -1;
     }
 

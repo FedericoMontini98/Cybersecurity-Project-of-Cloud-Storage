@@ -1377,7 +1377,12 @@ int Client::upload(string username){
 
         if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
             std::cerr << "ERR: command check on whitelist fails"<<endl;
-            throw -1;
+            return -1;
+        }
+
+        if(filename.length() > 30){
+            cerr<<"ERR: filename too long, reduce before upload"<<endl;
+            return -1;
         }
 
         //I need to be sure that no other file is in Download directory with the same name
@@ -1541,6 +1546,7 @@ int Client::upload(string username){
                 return -4;
             }
         }
+        return -1;
 
     }
     
@@ -1576,6 +1582,11 @@ int Client::download(string username){
 
         if(file_exists_to_download(filename, username)!=0){
             std::cerr << "ERR: file already inside download dir"<<endl;
+            return -1;
+        }
+
+        if(filename.length() > 30){
+            cerr<<"ERR: filename too long, reduce before download"<<endl;
             return -1;
         }
 
@@ -1718,6 +1729,7 @@ int Client::download(string username){
                 return -4;
             }
         }
+        return -1;
 
 
     }
