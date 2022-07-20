@@ -22,6 +22,10 @@ int Worker::handle_command(unsigned char* received_mes) {
         }
         this->iv = first_pkt.iv;
         MACStr = (unsigned char*)malloc(IV_LENGTH + first_pkt.cipher_len);
+        if(!MACStr){
+            cerr<<"Error during malloc of MACStr"<<endl;
+            throw 0;
+        }
         memcpy(MACStr, first_pkt.iv, IV_LENGTH);
         memcpy(MACStr + 16,(void*)first_pkt.ciphertext.c_str(),first_pkt.cipher_len);
 
@@ -100,7 +104,7 @@ int Worker::handle_command(unsigned char* received_mes) {
                     cerr<<"Received wrong message type!"<<endl;
                     throw 0;
                 }
-                int ret = logout(pkt_logout);
+                logout(pkt_logout);
                 return BOOTSTRAP_LOGOUT;
             }
             /**************************************************************************************/

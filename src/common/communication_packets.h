@@ -35,6 +35,11 @@ struct generic_message{
         int pointer_counter = 0;
 
         iv = (unsigned char*)malloc(IV_LENGTH);
+        if(!iv){
+            cerr<<"error during IV malloc in generic packet"<<endl;
+            free(serialized_pkt);
+            return false;
+        }
         memset(iv,0,IV_LENGTH);
         // copy of the iv
         memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
@@ -58,6 +63,12 @@ struct generic_message{
         pointer_counter += cipher_len;
 
         HMAC = (unsigned char *)malloc(HMAC_LENGTH);
+        if(!HMAC){
+            cerr<<"error during HMAC malloc in generic packet"<<endl;
+            free(serialized_pkt);
+            free(iv);
+            return false;
+        }
         memset(HMAC,0,HMAC_LENGTH);
         // copy of the ciphertext
         memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
@@ -146,6 +157,11 @@ struct generic_message_file{
         int pointer_counter = 0;
 
         iv = (unsigned char*)malloc(IV_LENGTH);
+        if(!iv){
+            cerr<<"error during IV malloc in generic packet"<<endl;
+            free(serialized_pkt);
+            return false;
+        }
         memset(iv,0,IV_LENGTH);
         // copy of the iv
         memcpy(iv,serialized_pkt + pointer_counter,IV_LENGTH);
@@ -166,12 +182,25 @@ struct generic_message_file{
 
         // copy of the ciphertext
         ciphertext = (uint8_t*)malloc(cipher_len);
+        if(!ciphertext){
+            cerr<<"error during ciphertext malloc in file generic packet"<<endl;
+            free(iv);
+            free(serialized_pkt);
+            return false;
+        }
         memset(ciphertext,0,cipher_len);
 
         memcpy(ciphertext, serialized_pkt + pointer_counter, cipher_len);
         pointer_counter += cipher_len;
 
         HMAC = (uint8_t*)malloc(HMAC_LENGTH);
+        if(!HMAC){
+            cerr<<"error during HMAC malloc in file generic packet"<<endl;
+            free(iv);
+            free(ciphertext);
+            free(serialized_pkt);
+            return false;
+        }
         memset(HMAC,0,HMAC_LENGTH);
         // copy of the ciphertext
         memcpy(HMAC,serialized_pkt + pointer_counter,HMAC_LENGTH);
@@ -373,26 +402,6 @@ struct login_bootstrap_pkt
     }
 	
 };
-
-/*********************************************************************************************************************************/
-
-#define LOGIN_REFUSE_CONNECTION 2
-// sent in clear
-struct login_refuse_connection_pkt
-{
-    uint16_t code;
-
-    void serialize_message()
-    {
-        code = htons(code);
-    }
-
-    void deserialize_message()
-    {
-        code = ntohs(code);
-    }
-};
-
 
 /*********************************************************************************************************************************/
 
@@ -1329,10 +1338,6 @@ struct bootstrap_logout{
     }
 
     bool deserialize_plaintext(uint8_t *serialized_decrypted_pkt){
-
-        uint16_t code;
-        uint32_t response; // 0: operation not allowed, 1: operation allowed
-        uint32_t counter;
 
         string s = (char*)serialized_decrypted_pkt;
         string delimiter = "$";

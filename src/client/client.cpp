@@ -56,6 +56,10 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
     unsigned char*  MACStr;
     unsigned char* HMAC;
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    if(!MACStr){
+        cerr<<"Error during malloc of MACStr"<<endl;
+        return nullptr;
+    }
     memset(MACStr, 0 , IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
     memcpy(MACStr + 16,(void*)rcvd_pkt.ciphertext.c_str(),rcvd_pkt.cipher_len);
@@ -134,6 +138,10 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC_for_files(){
     uint8_t* HMAC;
 
     MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    if(!MACStr){
+        cerr<<"Error during malloc of MACStr"<<endl;
+        return nullptr;
+    }
 	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
     memcpy(MACStr, this->iv , IV_LENGTH);
     memcpy(MACStr + IV_LENGTH,rcvd_pkt.ciphertext,rcvd_pkt.cipher_len);
@@ -186,7 +194,7 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
 	unsigned char* ciphertext;
     int cipherlen;
 	// Encryption
-    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), strlen(buffer.c_str()), ciphertext, cipherlen, true)!=0){
+    if(cbc_encrypt_fragment((unsigned char*)buffer.c_str(), buffer.length(), ciphertext, cipherlen, true)!=0){
         cout<<"Error during encryption"<<endl;
         free(ciphertext);
         ciphertext = nullptr;
@@ -196,6 +204,11 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
 	// Get the HMAC
     uint32_t MAC_len; 
     unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    if(!MACStr){
+        cerr<<"Error during malloc of MACStr"<<endl;
+        free(ciphertext);
+        return -1;
+    }
     memset(MACStr,0,IV_LENGTH + cipherlen);
     unsigned char* HMAC;
     memcpy(MACStr,this->iv, IV_LENGTH);
@@ -269,10 +282,16 @@ bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
         ciphertext = nullptr;
         return false;
     }
-    cout<<"ciphertxt length: "<<cipherlen<<endl;
+
 	// Get the HMAC
     uint32_t MAC_len; 
     uint8_t*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    if(!MACStr){
+        cerr<<"Error during malloc of MACStr"<<endl;
+        free(ciphertext);
+        return -1;
+    }
+    memset(MACStr,0,IV_LENGTH + cipherlen);
     unsigned char* HMAC;
     memcpy(MACStr,this->iv, IV_LENGTH);
     memcpy(MACStr + IV_LENGTH,ciphertext,cipherlen);
@@ -1365,7 +1384,7 @@ int Client::upload(string username){
         bootstrap_upload pkt;
         pkt.code = BOOTSTRAP_UPLOAD;
         pkt.filename = filename;
-        pkt.filename_len = strlen(filename.c_str());
+        pkt.filename_len = filename.length();
         pkt.response = 0;
         pkt.counter = counter;
         pkt.size = size_file;
@@ -2105,5 +2124,6 @@ int Client::run(){
 	cout<<"==============================="<<endl<<endl<<endl;
 
     close(session_socket);
+    return 0;
 }
 
