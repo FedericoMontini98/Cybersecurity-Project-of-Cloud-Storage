@@ -1039,6 +1039,7 @@ bool Worker::init_session(){
 			
 			if (error_code > 1) {free(receive_buffer);}
 			if (error_code > 3) {free(iv); iv = nullptr;}
+			if (error_code > 4) {free(plaintext);}
 			if (error_code > 5) {X509_free(ca_cert);}
 			if (error_code > 6) {X509_CRL_free(ca_crl);}
 			if (error_code > 8) {EVP_PKEY_free(client_pubk);}

@@ -1237,7 +1237,7 @@ bool Client::init_session(){
 			free(signed_text);
             free(to_copy);
 			secure_free(receive_buffer, len);
-            free(plaintext);
+            secure_free(plaintext, plainlen);
 			X509_free(ca_cert);
 			X509_CRL_free(ca_crl);
 			EVP_PKEY_free(server_pubk);
@@ -1246,6 +1246,7 @@ bool Client::init_session(){
 			
 			if (error_code > 1)  { free(receive_buffer); }
 			if (error_code > 7)  { free(iv); iv = nullptr; }
+            if (error_code > 8)  { free(plaintext); }
 			if (error_code > 9)  { X509_free(ca_cert); }
 			if (error_code > 10) { X509_CRL_free(ca_crl); }
 			if (error_code > 12) { EVP_PKEY_free(server_pubk); }
