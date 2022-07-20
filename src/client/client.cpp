@@ -17,7 +17,6 @@ Client::Client(const uint16_t _port){
 // DESTRUCTOR
 Client::~Client(){
     // if keys are nullptr frees do nothing
-    if (private_key != nullptr) {EVP_PKEY_free(private_key);}
 	if (symmetric_key != nullptr) {secure_free(symmetric_key, symmetric_key_length);}
     if (hmac_key != nullptr) {secure_free(hmac_key, hmac_key_length);}      
     if (iv != nullptr) {free(iv);}
@@ -970,7 +969,7 @@ int Client::send_login_client_authentication(login_authentication_pkt& pkt){
 
     memcpy(part_to_encrypt, to_copy, pte_len);
 	
-	// sign it, TO FREE
+	// sign the document and free the private_key
 	signature = sign_message(private_key, part_to_encrypt, pte_len, signature_len);
 	if (signature == nullptr){
 		cerr << "cannot generate valid signature" << endl;
@@ -1926,10 +1925,6 @@ int Client::logout(){
     symmetric_key = nullptr;
     secure_free(hmac_key, hmac_key_length);
     hmac_key = nullptr;
-    if (private_key != nullptr){
-        EVP_PKEY_free(private_key);
-        private_key = nullptr;
-    }
 
     cout << "KEYS FREED CORRECTLY" << endl << endl;
 
@@ -2104,7 +2099,11 @@ int Client::run(){
 
             case 6:
                 logout();
-                break;
+                cout<<"==============================="<<endl;
+                cout<<"=            LOGOUT           ="<<endl;
+                cout<<"==============================="<<endl<<endl<<endl;
+                close(session_socket);
+                return 0;
 
             case -1:
                 cout<<"Wrong command, check and try again"<<endl;
@@ -2118,12 +2117,5 @@ int Client::run(){
         //Clear the cin flag
         cin.clear();
     }
-
-    cout<<"==============================="<<endl;
-	cout<<"=            LOGOUT           ="<<endl;
-	cout<<"==============================="<<endl<<endl<<endl;
-
-    close(session_socket);
-    return 0;
 }
 

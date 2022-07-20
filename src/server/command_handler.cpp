@@ -794,8 +794,6 @@ int Worker::logout (bootstrap_logout pkt){
     symmetric_key = nullptr;
     secure_free(hmac_key, hmac_key_length);
     hmac_key = nullptr;
-    EVP_PKEY_free(private_key);
-    private_key = nullptr;
 
     cout << "KEYS FREED CORRECTLY, LOGOUT OF " + logged_user << endl << endl;
 
