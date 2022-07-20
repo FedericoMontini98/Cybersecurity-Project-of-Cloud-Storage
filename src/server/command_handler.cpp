@@ -2,9 +2,6 @@
 
 int Worker::handle_command(unsigned char* received_mes) {
 
-    unsigned char*  MACStr;
-    uint32_t MAC_len; 
-    unsigned char* HMAC;
     unsigned char* plaintxt;
     int ptlen;
     int code;
@@ -21,16 +18,23 @@ int Worker::handle_command(unsigned char* received_mes) {
             throw 0;
         }
         this->iv = first_pkt.iv;
-        MACStr = (unsigned char*)malloc(IV_LENGTH + first_pkt.cipher_len);
+        
+        uint32_t MAC_len; 
+        uint8_t*  MACStr;
+        uint8_t* HMAC;
+        MACStr = (uint8_t*)malloc(IV_LENGTH + first_pkt.cipher_len + sizeof(first_pkt.cipher_len));
         if(!MACStr){
             cerr<<"Error during malloc of MACStr"<<endl;
-            throw 0;
+            return -1;
         }
-        memcpy(MACStr, first_pkt.iv, IV_LENGTH);
-        memcpy(MACStr + 16,(void*)first_pkt.ciphertext,first_pkt.cipher_len);
+        memset(MACStr, 0 , IV_LENGTH + first_pkt.cipher_len + sizeof(first_pkt.cipher_len) );
+        memcpy(MACStr,first_pkt.iv, IV_LENGTH);
+        memcpy(MACStr + IV_LENGTH, &first_pkt.cipher_len, sizeof(first_pkt.cipher_len));
+        memcpy(MACStr + IV_LENGTH + sizeof(first_pkt.cipher_len), (void*)first_pkt.ciphertext, first_pkt.cipher_len);
 
         //Generate the HMAC on the receiving side iv||ciphertext
-        generate_HMAC(MACStr,IV_LENGTH + first_pkt.cipher_len, HMAC,MAC_len);
+        generate_HMAC(MACStr,IV_LENGTH + first_pkt.cipher_len + sizeof(first_pkt.cipher_len), HMAC,MAC_len);
+
         //Free
         free(MACStr);
 
@@ -39,7 +43,7 @@ int Worker::handle_command(unsigned char* received_mes) {
             cerr<<"Error: HMAC cant be verified"<<endl;
             throw 1;
         }
-
+        free(HMAC);
         //Decrypt the ciphertext and obtain the plaintext
         if(cbc_decrypt_fragment((unsigned char* )first_pkt.ciphertext,first_pkt.cipher_len, plaintxt,ptlen)!=0){
             cerr<<"Error during the decryption of the first packet"<<endl;
@@ -109,7 +113,7 @@ int Worker::handle_command(unsigned char* received_mes) {
     }
     catch(int error_code){
 		if (error_code > 0) {
-            free(HMAC);
+            cerr<<"ERROR"<<endl;
 		}
 		if (error_code > 1) {
             free(plaintxt);

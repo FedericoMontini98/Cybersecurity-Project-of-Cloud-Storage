@@ -144,19 +144,20 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC(){
     this->iv = rcvd_pkt.iv;
 
     uint32_t MAC_len; 
-    unsigned char*  MACStr;
-    unsigned char* HMAC;
-    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
-	if(!MACStr){
+    uint8_t*  MACStr;
+    uint8_t* HMAC;
+    MACStr = (uint8_t*)malloc(IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len));
+    if(!MACStr){
         cerr<<"Error during malloc of MACStr"<<endl;
         return nullptr;
     }
-	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
+    memset(MACStr, 0 , IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len) );
     memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
-    memcpy(MACStr + IV_LENGTH,(void*)rcvd_pkt.ciphertext,rcvd_pkt.cipher_len);
+    memcpy(MACStr + IV_LENGTH, &rcvd_pkt.cipher_len, sizeof(rcvd_pkt.cipher_len));
+    memcpy(MACStr + IV_LENGTH + sizeof(rcvd_pkt.cipher_len), (void*)rcvd_pkt.ciphertext, rcvd_pkt.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext
-    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len), HMAC,MAC_len);
 
 	if(MAC_len != HMAC_LENGTH){
 		cerr<<"The size of the gerated HMAC differs!"<<endl;
@@ -232,17 +233,18 @@ unsigned char* Worker::receive_decrypt_and_verify_HMAC_for_files(){
     uint8_t*  MACStr;
     uint8_t* HMAC;
 
-    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
-	if(!MACStr){
+    MACStr = (uint8_t*)malloc(IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len));
+    if(!MACStr){
         cerr<<"Error during malloc of MACStr"<<endl;
         return nullptr;
     }
-	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
-    memcpy(MACStr, this->iv , IV_LENGTH);
-    memcpy(MACStr + IV_LENGTH,rcvd_pkt.ciphertext,rcvd_pkt.cipher_len);
+    memset(MACStr, 0 , IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len) );
+    memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
+    memcpy(MACStr + IV_LENGTH, &rcvd_pkt.cipher_len, sizeof(rcvd_pkt.cipher_len));
+    memcpy(MACStr + IV_LENGTH + sizeof(rcvd_pkt.cipher_len), (void*)rcvd_pkt.ciphertext, rcvd_pkt.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext
-    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len), HMAC,MAC_len);
 
     //HMAC Verification
     if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
@@ -292,22 +294,24 @@ bool Worker::encrypt_generate_HMAC_and_send(string buffer){
 
 	// Get the HMAC
     uint32_t MAC_len; 
-    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
-	if(!MACStr){
-        cerr<<"Error during malloc of MACStr"<<endl;
-        free(ciphertext);
-        return -1;
-    }
-	memset(MACStr,0,IV_LENGTH + cipherlen);
     unsigned char* HMAC;
+    unsigned char* MACStr = (uint8_t*)malloc(IV_LENGTH + cipherlen + sizeof(cipherlen));
+    if(!MACStr){
+        cerr<<"Error during malloc of MACStr"<<endl;
+        return false;
+    }
+    memset(MACStr, 0 , IV_LENGTH + cipherlen + sizeof(cipherlen) );
     memcpy(MACStr,this->iv, IV_LENGTH);
-    memcpy(MACStr + 16,ciphertext,cipherlen);
+    memcpy(MACStr + IV_LENGTH, &cipherlen, sizeof(cipherlen));
+    memcpy(MACStr + IV_LENGTH + sizeof(cipherlen), (void*)ciphertext, cipherlen);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen + sizeof(cipherlen), HMAC,MAC_len);
 
 	//Initialization of the data to serialize
     pkt.ciphertext = ciphertext;
     pkt.cipher_len = cipherlen;
     pkt.iv = this->iv;
-    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
     pkt.HMAC = HMAC;
     unsigned char* data;
 
@@ -355,22 +359,26 @@ bool Worker::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
     	cout<<"ciphertxt length: "<<cipherlen<<endl;
 	}
 	// Get the HMAC
-    uint32_t MAC_len; 
-    uint8_t*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
-	if(!MACStr){
-        cerr<<"Error during malloc of MACStr"<<endl;
-        free(ciphertext);
-        return -1;
-    }
+	uint32_t MAC_len; 
     unsigned char* HMAC;
+    unsigned char* MACStr = (uint8_t*)malloc(IV_LENGTH + cipherlen + sizeof(cipherlen));
+    if(!MACStr){
+        cerr<<"Error during malloc of MACStr"<<endl;
+        return false;
+    }
+    memset(MACStr, 0 , IV_LENGTH + cipherlen + sizeof(cipherlen) );
     memcpy(MACStr,this->iv, IV_LENGTH);
-    memcpy(MACStr + IV_LENGTH,ciphertext,cipherlen);
+    memcpy(MACStr + IV_LENGTH, &cipherlen, sizeof(cipherlen));
+    memcpy(MACStr + IV_LENGTH + sizeof(cipherlen), (void*)ciphertext, cipherlen);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen + sizeof(cipherlen), HMAC,MAC_len);
+
 
 	//Initialization of the data to serialize
     pkt.ciphertext = ciphertext;
     pkt.cipher_len = cipherlen;
-    pkt.iv = this->iv;
-    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
+    pkt.iv = this->iv; 
     pkt.HMAC = HMAC;
 
     unsigned char* data;
