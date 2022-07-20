@@ -764,7 +764,6 @@ struct bootstrap_upload
 {
     // Send through the net
     unsigned char* iv;
-    uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
 
@@ -842,7 +841,6 @@ struct file_upload
 {
     //In clear fields
     unsigned char* iv;
-    uint32_t cipher_len;
     uint8_t* ciphertext;
     unsigned char* HMAC;
 
@@ -880,7 +878,6 @@ struct file_upload
 struct end_upload{
     // Sent through the net
     unsigned char* iv;
-    uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
 
@@ -933,7 +930,6 @@ struct bootstrap_download
 {
     // fields to send
     unsigned char* iv;
-    uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
 
@@ -1000,7 +996,6 @@ struct file_download
 {
     //In clear fields
     unsigned char* iv;
-    uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
 
@@ -1056,7 +1051,6 @@ struct file_download
 struct end_download{
     // Sent through the net
     unsigned char* iv;
-    uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
 
@@ -1106,7 +1100,6 @@ struct end_download{
 struct exit_op{
     // Sent through the net
     unsigned char* iv;
-    uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
 
@@ -1156,7 +1149,6 @@ struct exit_op{
 struct bootstrap_simple_operation{
     // Send through the net
     unsigned char* iv;
-    uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
 
@@ -1262,7 +1254,6 @@ struct bootstrap_simple_operation{
 struct bootstrap_logout{
     // Send through the net
     unsigned char* iv;
-    uint32_t cipher_len;
     string ciphertext;
     unsigned char* HMAC;
 
@@ -1270,44 +1261,6 @@ struct bootstrap_logout{
     uint16_t code;
     uint32_t response; // 0: operation not allowed, 1: operation allowed
     uint32_t counter;
-
-    void *serialize_message(int &len)
-    {
-        uint8_t *serialized_pkt = nullptr;
-        int pointer_counter = 0;
-
-        len = (IV_LENGTH + sizeof(cipher_len) + cipher_len + HMAC_LENGTH);
-
-        serialized_pkt = (uint8_t *)malloc(len);
-        if (!serialized_pkt)
-        {
-            cerr << "serialized packet malloc failed" << endl;
-            return nullptr;
-        }
-
-        uint32_t certif_ciph_len = htonl(cipher_len);
-
-        // adding the iv
-        uint8_t *cert_iv = (uint8_t *)iv;
-        memcpy(serialized_pkt + pointer_counter, cert_iv, IV_LENGTH);
-        pointer_counter += IV_LENGTH;
-
-        // adding the ciphertext length
-        memcpy(serialized_pkt + pointer_counter, &certif_ciph_len, sizeof(certif_ciph_len));
-        pointer_counter += sizeof(certif_ciph_len);
-
-        // adding the ciphertext
-        uint8_t *cert_ciph = (uint8_t *)ciphertext.c_str();
-        memcpy(serialized_pkt + pointer_counter, cert_ciph, cipher_len);
-        pointer_counter += cipher_len;
-
-        // adding the hmac
-        uint8_t *cert_hmac = (uint8_t *)HMAC;
-        memcpy(serialized_pkt + pointer_counter, cert_hmac, HMAC_LENGTH);
-        pointer_counter += HMAC_LENGTH;
-
-        return serialized_pkt;
-    }
 
     bool deserialize_message(uint8_t *serialized_pkt_received)
     {
