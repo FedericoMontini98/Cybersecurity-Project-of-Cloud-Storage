@@ -15,7 +15,7 @@
 #include <math.h>
 #include <dirent.h>
 
-# define DEBUG true
+# define DEBUG false
 # define BACKLOG_QUEUE_SIZE  10
 # define FILE_FRAGMENTS_SIZE 4096
 # define HMAC_KEY_SIZE 32

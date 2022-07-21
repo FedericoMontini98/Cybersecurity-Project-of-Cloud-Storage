@@ -54,17 +54,18 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC(){
     uint32_t MAC_len; 
     uint8_t*  MACStr;
     uint8_t* HMAC;
-    MACStr = (uint8_t*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    MACStr = (uint8_t*)malloc(IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len));
     if(!MACStr){
         cerr<<"Error during malloc of MACStr"<<endl;
         return nullptr;
     }
-    memset(MACStr, 0 , IV_LENGTH + rcvd_pkt.cipher_len);
+    memset(MACStr, 0 , IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len) );
     memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
-    memcpy(MACStr + 16,(void*)rcvd_pkt.ciphertext,rcvd_pkt.cipher_len);
+    memcpy(MACStr + IV_LENGTH, &rcvd_pkt.cipher_len, sizeof(rcvd_pkt.cipher_len));
+    memcpy(MACStr + IV_LENGTH + sizeof(rcvd_pkt.cipher_len), (void*)rcvd_pkt.ciphertext, rcvd_pkt.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext
-    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len), HMAC,MAC_len);
 
     //HMAC Verification
     if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
@@ -136,17 +137,18 @@ unsigned char* Client::receive_decrypt_and_verify_HMAC_for_files(){
     uint8_t*  MACStr;
     uint8_t* HMAC;
 
-    MACStr = (unsigned char*)malloc(IV_LENGTH + rcvd_pkt.cipher_len);
+    MACStr = (uint8_t*)malloc(IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len));
     if(!MACStr){
         cerr<<"Error during malloc of MACStr"<<endl;
         return nullptr;
     }
-	memset(MACStr, 0 ,IV_LENGTH + rcvd_pkt.cipher_len);
-    memcpy(MACStr, this->iv , IV_LENGTH);
-    memcpy(MACStr + IV_LENGTH,rcvd_pkt.ciphertext,rcvd_pkt.cipher_len);
+    memset(MACStr, 0 , IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len) );
+    memcpy(MACStr,rcvd_pkt.iv, IV_LENGTH);
+    memcpy(MACStr + IV_LENGTH, &rcvd_pkt.cipher_len, sizeof(rcvd_pkt.cipher_len));
+    memcpy(MACStr + IV_LENGTH + sizeof(rcvd_pkt.cipher_len), (void*)rcvd_pkt.ciphertext, rcvd_pkt.cipher_len);
 
     //Generate the HMAC on the receiving side iv||ciphertext
-    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len, HMAC,MAC_len);
+    generate_HMAC(MACStr,IV_LENGTH + rcvd_pkt.cipher_len + sizeof(rcvd_pkt.cipher_len), HMAC,MAC_len);
 
     //HMAC Verification
     if(!verify_SHA256_MAC(HMAC,rcvd_pkt.HMAC)){
@@ -202,22 +204,26 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
 
 	// Get the HMAC
     uint32_t MAC_len; 
-    unsigned char*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    unsigned char* HMAC;
+    unsigned char* MACStr = (uint8_t*)malloc(IV_LENGTH + cipherlen + sizeof(cipherlen));
     if(!MACStr){
         cerr<<"Error during malloc of MACStr"<<endl;
-        free(ciphertext);
-        return -1;
+        return false;
     }
-    memset(MACStr,0,IV_LENGTH + cipherlen);
-    unsigned char* HMAC;
+    //Clean allocated space
+    memset(MACStr, 0 , IV_LENGTH + cipherlen + sizeof(cipherlen));
+    //insert the fields in append
     memcpy(MACStr,this->iv, IV_LENGTH);
-    memcpy(MACStr + 16,ciphertext,cipherlen);
+    memcpy(MACStr + IV_LENGTH, &cipherlen, sizeof(cipherlen));
+    memcpy(MACStr + IV_LENGTH + sizeof(cipherlen), (void*)ciphertext, cipherlen);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen + sizeof(cipherlen), HMAC,MAC_len);
 
 	//Initialization of the data to serialize
     pkt.ciphertext = (uint8_t*)ciphertext;
     pkt.cipher_len = cipherlen;
     pkt.iv = this->iv;
-    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
     pkt.HMAC = HMAC;
 
     unsigned char* data;
@@ -271,7 +277,9 @@ bool Client::encrypt_generate_HMAC_and_send(string buffer){
 bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
 	// Generic Packet
 	generic_message_file pkt;
-    cout<<"buffer len: "<<msg_len<<endl;
+    if(DEBUG){
+        cout<<"buffer len: "<<msg_len<<endl;
+    }
 	unsigned char* ciphertext;
     int cipherlen;
 	// Encryption
@@ -284,22 +292,24 @@ bool Client::encrypt_generate_HMAC_and_send(uint8_t* buffer, uint32_t msg_len){
 
 	// Get the HMAC
     uint32_t MAC_len; 
-    uint8_t*  MACStr = (unsigned char*)malloc(IV_LENGTH + cipherlen);
+    unsigned char* HMAC;
+    unsigned char* MACStr = (uint8_t*)malloc(IV_LENGTH + cipherlen + sizeof(cipherlen));
     if(!MACStr){
         cerr<<"Error during malloc of MACStr"<<endl;
-        free(ciphertext);
-        return -1;
+        return false;
     }
-    memset(MACStr,0,IV_LENGTH + cipherlen);
-    unsigned char* HMAC;
+    memset(MACStr, 0 , IV_LENGTH + cipherlen + sizeof(cipherlen) );
     memcpy(MACStr,this->iv, IV_LENGTH);
-    memcpy(MACStr + IV_LENGTH,ciphertext,cipherlen);
+    memcpy(MACStr + IV_LENGTH, &cipherlen, sizeof(cipherlen));
+    memcpy(MACStr + IV_LENGTH + sizeof(cipherlen), (void*)ciphertext, cipherlen);
+
+    //Generate the HMAC on the receiving side iv||ciphertext
+    generate_HMAC(MACStr,IV_LENGTH + cipherlen + sizeof(cipherlen), HMAC,MAC_len);
 
 	//Initialization of the data to serialize
     pkt.ciphertext = ciphertext;
     pkt.cipher_len = cipherlen;
     pkt.iv = this->iv;
-    generate_HMAC(MACStr,IV_LENGTH + cipherlen, HMAC,MAC_len); 
     pkt.HMAC = HMAC;
 
     unsigned char* data;
@@ -703,12 +713,12 @@ int Client::send_encrypted_file (string filename, uint32_t& counter){
     // If !file the file cant be open or is not present inside the dir
     if (!file){
         cerr<<"Error during file opening"<<endl;
-        return false;
+        return -1;
     }
     struct stat buf;
     if (stat(path.c_str(),&buf)!=0){ //stat failed
         cout<<"Failed stat function: File doesn't exists in the Upload dir"<<endl;
-        return 0;
+        return -1;
     }
 
     //Calculate the number of chunks to send
@@ -1048,23 +1058,24 @@ bool Client::init_socket(){
 	return true;
 }
 
+// initialize a session with the server
 bool Client::init_session(){
     int ret;
 	login_bootstrap_pkt bootstrap_pkt;
 	login_authentication_pkt server_auth_pkt; 
 	login_authentication_pkt client_auth_pkt;
-	unsigned char* symmetric_key_no_hashed; // TO FREE
-	unsigned char* hmac_key_no_hashed; // TO FREE
-	unsigned char* plaintext; // TO FREE
+	unsigned char* symmetric_key_no_hashed; 
+	unsigned char* hmac_key_no_hashed; 
+	unsigned char* plaintext; 
 	int plainlen;
-	unsigned char* signed_text; // TO FREE
+	unsigned char* signed_text; 
 	int signed_text_len;
 	EVP_PKEY* server_pubk;
-	X509* ca_cert;
-	X509_CRL* ca_crl;
+	X509* ca_cert; 
+	X509_CRL* ca_crl; 
 	
 	// receive buffer
-	unsigned char* receive_buffer; // TO FREE
+	unsigned char* receive_buffer; 
     uint32_t len;
 
     cout<<"INITIALIZE SESSION."<<endl<<endl;
@@ -1236,7 +1247,7 @@ bool Client::init_session(){
 			free(signed_text);
             free(to_copy);
 			secure_free(receive_buffer, len);
-            free(plaintext);
+            secure_free(plaintext, plainlen);
 			X509_free(ca_cert);
 			X509_CRL_free(ca_crl);
 			EVP_PKEY_free(server_pubk);
@@ -1245,6 +1256,7 @@ bool Client::init_session(){
 			
 			if (error_code > 1)  { free(receive_buffer); }
 			if (error_code > 7)  { free(iv); iv = nullptr; }
+            if (error_code > 8)  { free(plaintext); }
 			if (error_code > 9)  { X509_free(ca_cert); }
 			if (error_code > 10) { X509_CRL_free(ca_crl); }
 			if (error_code > 12) { EVP_PKEY_free(server_pubk); }
@@ -1330,7 +1342,9 @@ uint32_t Client::file_exists_to_download(string filename, string username){
  * 
  */
 void Client::help(){
-    cout<<"===================================== HELP ================================================="<<endl<<endl;
+    cout<<"******************************************************************"<<endl;
+    cout<<"                             HELP                                 "<<endl;
+    cout<<"******************************************************************"<<endl<<endl;
     cout<<"The available commands are the following:"<<endl<<endl;
     cout<<"help : \tthat shows all the available commands"<<endl<<endl;
     cout<<"download : \tSpecifies a file on the server machine. The server sends the requested file to the user. The filename of any downloaded file must be the filename used to store the file on the server. If this is not possible, the file is not downloaded."<<endl<<endl;
@@ -1339,7 +1353,7 @@ void Client::help(){
     cout<<"list: \tThe client asks to the server the list of the filenames of the available files in his dedicated storage. The client prints to screen the list."<<endl<<endl;
     cout<<"rename : \tSpecifies a file on the server machine. Within the request, the clients sends the new filename. If the renaming operation is not possible, the filename is not changed."<<endl<<endl;
     cout<<"logout: \tThe client gracefully closes the connection with the server. "<<endl;
-    cout<<"============================================================================================"<<endl<<endl; 
+    cout<<"******************************************************************"<<endl<<endl; 
 }
 
 /**
@@ -1351,15 +1365,24 @@ void Client::help(){
 int Client::upload(string username){
     try{
         uint32_t counter = 0;
-        cout<<"**********************************************"<<endl;
+
+        cout<<"******************************************************************"<<endl;
+        cout<<"                               UPLOAD                             "<<endl;
+        cout<<"******************************************************************"<<endl<<endl;
+        cout<<"-------------------------------------------------------"<<endl;
         cout<<"Which file do you want to upload on the cloud?"<<endl;
-        cout<<"**********************************************"<<endl<<endl;
         string filename;
         cin>>filename;
+        cout<<endl;
 
         if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
             std::cerr << "ERR: command check on whitelist fails"<<endl;
-            throw -1;
+            return -1;
+        }
+
+        if(filename.length() > 30){
+            cerr<<"ERR: filename too long, reduce before upload"<<endl;
+            return -1;
         }
 
         //I need to be sure that no other file is in Download directory with the same name
@@ -1369,7 +1392,6 @@ int Client::upload(string username){
         uint32_t size_file = file_exists(filename,username);
         if(size_file==0){
             cout<<"Error during upload"<<endl;
-            cout<<"*******************"<<endl;
             throw -1;
         }
 
@@ -1397,7 +1419,6 @@ int Client::upload(string username){
         }
 
         counter++;
-        cout<<"***********************************************"<<endl;
         /***************************************************************************************/
         // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
 
@@ -1443,17 +1464,15 @@ int Client::upload(string username){
         /***************************************************************************************/
         // *************************** PHASE 2 SEND THE FILE: MSG 3 ************************** //
 
-        cout<<"***********************************************"<<endl;
-        cout<<"*********HANDLE FILE TRANSFER PHASE************"<<endl;
-        cout<<"***********************************************"<<endl;
+        cout<<"HANDLE FILE TRANSFER PHASE"<<endl;
 
         if(send_encrypted_file(filename, counter) != 0){
             cerr<<"error during the upload of the file"<<endl;
             throw 1;  //SOMETHING WRONG DURING FILE EXCANGE, SEND AN END OF OPERATION MESSAGE
         }
-        cout<<"***********************************************"<<endl;
-        cout<<"********FILE TRANSFER PHASE COMPLETED**********"<<endl;
-        cout<<"***********************************************"<<endl;
+        
+
+        cout<<"FILE TRANSFER PHASE COMPLETED"<<endl<<endl;
 
         /***************************************************************************************/
         // ******************************* SEND EOF NOTIF: MSG 4 ***************************** //
@@ -1471,7 +1490,6 @@ int Client::upload(string username){
             throw 1;    //FILE EXCHANGED BUT SOMETHING WRONG DURING EOF HS, SEND AN END OF OPERATION MESSAGE
         }
         counter++;
-        cout<<"***********************************************"<<endl;
         /***************************************************************************************/
         // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 5 ******************** //
   
@@ -1508,8 +1526,8 @@ int Client::upload(string username){
         }
     }
     catch(int errorCode){
-        cout<<"***************************************************************************************"<<endl;
-        cout<<"***************************** THE UPLOAD HAS FAILED ***********************************"<<endl;
+
+        cout<<"THE UPLOAD HAS FAILED"<<endl;
         if(errorCode == -1){
             return -2;
         }
@@ -1528,10 +1546,11 @@ int Client::upload(string username){
                 return -4;
             }
         }
+        return -1;
 
     }
-    cout<<"***************************************************************************************"<<endl;
-    cout<<"************************ THE UPLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl;
+    
+    cout<<"THE UPLOAD HAS BEEN SUCCESSFUL!"<<endl;
 
     return 0;
 }
@@ -1546,22 +1565,28 @@ int Client::download(string username){
     try{
         uint32_t counter = 0;
 
-        cout<<"**************************************************"<<endl;
+        cout<<"******************************************************************"<<endl;
+        cout<<"                               DOWNLOAD                           "<<endl;
+        cout<<"******************************************************************"<<endl<<endl;
+        cout<<"-------------------------------------------------------"<<endl;
         cout<<"Which file do you want to download from the cloud?"<<endl;
-        cout<<"**************************************************"<<endl<<endl;
 
         string filename;
         cin>>filename;
+        cout<<endl;
 
         if (filename.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
             std::cerr << "ERR: command check on whitelist fails"<<endl;
-            std::cerr << "*************************************"<<endl<<endl;
             return -1;
         }
 
         if(file_exists_to_download(filename, username)!=0){
             std::cerr << "ERR: file already inside download dir"<<endl;
-            std::cerr << "*************************************"<<endl<<endl;
+            return -1;
+        }
+
+        if(filename.length() > 30){
+            cerr<<"ERR: filename too long, reduce before download"<<endl;
             return -1;
         }
 
@@ -1594,7 +1619,6 @@ int Client::download(string username){
 
         if(plaintxt == nullptr){
             cerr<<"Error during receive_decrypt_and_verify_HMAC"<<endl;
-            cerr << "*************************************"<<endl<<endl;
             return -2;
         }
 
@@ -1604,7 +1628,6 @@ int Client::download(string username){
         //Parsing and pkt parameters setting, it also FREE(PLAINTXT)
         if(!rcvd_pkt.deserialize_plaintext(plaintxt)){
             cerr<<"Received wrong message type!"<<endl;
-            cerr << "*************************************"<<endl<<endl;
             return -1;
         }
 
@@ -1615,13 +1638,11 @@ int Client::download(string username){
         // Check on rcvd packets values
         if( rcvd_pkt.counter != counter ){
             cerr<<"Wrong counter value, we received: "<<rcvd_pkt.counter<<" instead of: "<<counter<<endl;
-            cerr << "*************************************"<<endl<<endl;
             throw 1;
         }
         // Check the response of the server
         if( rcvd_pkt.size == 0){
             cerr<<"File not found on the server"<<endl;
-            cerr << "*************************************"<<endl<<endl;
             return -2;
         }
         
@@ -1631,19 +1652,14 @@ int Client::download(string username){
         /**************************************************************************************************/
         // ******************************* PHASE 2 RECEIVE THE FILE: MSG 3 ****************************** //
 
-        cout<<"***********************************************"<<endl;
-        cout<<"*********HANDLE FILE TRANSFER PHASE************"<<endl;
-        cout<<"***********************************************"<<endl;
-
+        cout<<"HANDLE FILE TRANSFER PHASE"<<endl;
 
         if(!encrypted_file_receive(rcvd_pkt.size, filename, counter)){
             cerr<<"Phase 2 failed: error during file upload"<<endl;
             return -3;
         }
 
-        cout<<"***********************************************"<<endl;
-        cout<<"********FILE TRANSFER PHASE COMPLETED**********"<<endl;
-        cout<<"***********************************************"<<endl;
+        cout<<"FILE TRANSFER PHASE COMPLETED"<<endl<<endl;
 
         /**************************************************************************************************/
         // ********************************* PHASE 3 FILE EOF HS : MSG 4 ******************************** //
@@ -1698,8 +1714,8 @@ int Client::download(string username){
         }
     }
     catch(int errorCode){
-        cout<<"***************************************************************************************"<<endl;
-        cout<<"***************************** THE UPLOAD HAS FAILED ***********************************"<<endl;
+        
+        cout<<"THE DOWNLOAD HAS FAILED"<<endl;
 
         if(errorCode == 1){
             exit_op pkt_exit;
@@ -1713,11 +1729,12 @@ int Client::download(string username){
                 return -4;
             }
         }
+        return -1;
+
 
     }
 
-    cout<<"*****************************************************************************************"<<endl;
-    cout<<"************************ THE DOWNLOAD HAS BEEN SUCCESSFUL! ******************************"<<endl<<endl;
+    cout<<"THE DOWNLOAD HAS BEEN SUCCESSFUL!"<<endl;
 
     return 0;
 }
@@ -1729,22 +1746,31 @@ int Client::simple_operation(int operation){
     string renamed_filename;
 
     if ( operation == BOOTSTRAP_DELETE ){
-        cout<<"**********************************************"<<endl;
+        cout<<"******************************************************************"<<endl;
+        cout<<"                               DELETE                             "<<endl;
+        cout<<"******************************************************************"<<endl<<endl;
+        cout<<"-------------------------------------------------------"<<endl;
         cout<<"Which file do you want to delete on the cloud?"<<endl;
-        cout<<"**********************************************"<<endl<<endl;
         cin>>filename;
+        cout<<endl;
     }
     else if ( operation == BOOTSTRAP_RENAME ){
-        cout<<"**********************************************"<<endl;
+        cout<<"******************************************************************"<<endl;
+        cout<<"                               RENAME                             "<<endl;
+        cout<<"******************************************************************"<<endl<<endl;
+        cout<<"-------------------------------------------------------"<<endl;
         cout<<"Which file do you want to rename on the cloud?"<<endl;
-        cout<<"**********************************************"<<endl<<endl;
         cin>>filename;
-        cout<<"**********************************************"<<endl;
+        cout<<endl;
         cout<<"Insert the new name for the file: "<< filename<<endl;
-        cout<<"**********************************************"<<endl<<endl;
         cin>>renamed_filename;
+        cout<<endl;
     }
     else if ( operation == BOOTSTRAP_LIST ){
+        cout<<"******************************************************************"<<endl;
+        cout<<"                              LIST                                "<<endl;
+        cout<<"******************************************************************"<<endl<<endl;
+        cout<<"-------------------------------------------------------"<<endl;
         filename = "--";
     }
 
@@ -1787,7 +1813,6 @@ int Client::simple_operation(int operation){
     }
 
     counter++;
-    cout<<"***********************************************"<<endl;
 
     /***************************************************************************************/
     // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
@@ -1830,7 +1855,7 @@ int Client::simple_operation(int operation){
         if (operation == BOOTSTRAP_DELETE || operation == BOOTSTRAP_RENAME)
             cerr << "Operation Failed, file not found" << endl;
         else if (operation == BOOTSTRAP_LIST)
-            cerr << "List failed" << endl;
+            cerr << "rename failed" << endl;
         return -2;
     }
     
@@ -1847,8 +1872,9 @@ int Client::simple_operation(int operation){
         else{   
             cout << rcvd_pkt.response_output <<  endl;
         }
-        cout << endl;
     }
+
+    cout<<"THE OPERATION HAS BEEN SUCCESSFUL!"<<endl;
 
     return 0;
 }
@@ -1867,13 +1893,14 @@ int Client::logout(){
     // Prepare the plaintext to encrypt
     string buffer = to_string(pkt.code) + "$" + to_string(pkt.response) + "$" + to_string(pkt.counter) + "$";
 
+    cout<<"-------------------------------------------------------"<<endl;
+
     if(!encrypt_generate_HMAC_and_send(buffer)){
         cerr<<"Error during encryption and send of MSG#1 of Delete"<<endl;
         return -2;
     }
 
     counter++;
-    cout<<"***********************************************"<<endl;
 
     /***************************************************************************************/
     // ******************** RECEIVE THE ANSWER FROM THE SERVER: MSG 2 ******************** //
@@ -1926,7 +1953,7 @@ int Client::logout(){
     secure_free(hmac_key, hmac_key_length);
     hmac_key = nullptr;
 
-    cout << "KEYS FREED CORRECTLY" << endl << endl;
+    cout << "KEYS FREED CORRECTLY"<< endl;
 
     return ret;
 }
@@ -2012,16 +2039,16 @@ int Client::run(){
             throw 1;
         }
 
-        cout << "session keys has been established correctly " << endl;
+        cout << "session keys has been established correctly " << endl<< endl;
     }
     catch (int error_code) {
         cout<<"Error during session initialization, exited with code: "<<error_code<<endl;
         return -1;
     }
 
-    cout<<"======================================="<<endl;
-	cout<<"=            CLIENT STARTED           ="<<endl;
-	cout<<"======================================="<<endl<<endl<<endl;
+    cout<<"******************************************************************"<<endl;
+	cout<<"                            CLIENT STARTED                        "<<endl;
+	cout<<"******************************************************************"<<endl<<endl;
 
     help();
 
@@ -2032,7 +2059,7 @@ int Client::run(){
         string command;
         cout<<"-> Insert a command:"<<endl;
         cin>>command;
-
+        cout<<endl;
 
         if (command.find_first_not_of(FILENAME_WHITELIST_CHARS) != std::string::npos){
             std::cerr << "ERR: command check on whitelist fails"<<endl;
@@ -2079,35 +2106,43 @@ int Client::run(){
             
             case 1:
                 upload(this->username);
+                cout<<"-------------------------------------------------------"<<endl<<endl;
                 continue;
 
             case 2:
                 download(this->username);
+                cout<<"-------------------------------------------------------"<<endl<<endl;
                 continue;
 
             case 3:
                 simple_operation(BOOTSTRAP_LIST);
+                cout<<"-------------------------------------------------------"<<endl<<endl;
                 continue;
 
             case 4:
                 simple_operation(BOOTSTRAP_RENAME);
+                cout<<"-------------------------------------------------------"<<endl<<endl;
                 continue;
 
             case 5:
                 simple_operation(BOOTSTRAP_DELETE);
+                cout<<"-------------------------------------------------------"<<endl<<endl;
                 continue;
 
             case 6:
                 logout();
-                cout<<"==============================="<<endl;
-                cout<<"=            LOGOUT           ="<<endl;
-                cout<<"==============================="<<endl<<endl<<endl;
+                cout<<"-------------------------------------------------------"<<endl<<endl;
+                cout<<"******************************************************************"<<endl;
+                cout<<"                              LOGOUT                              "<<endl;
+                cout<<"******************************************************************"<<endl<<endl;
                 close(session_socket);
                 return 0;
 
             case -1:
                 cout<<"Wrong command, check and try again"<<endl;
                 continue;
+
+            
 
         }
 
