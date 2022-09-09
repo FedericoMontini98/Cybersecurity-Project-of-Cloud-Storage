@@ -1,4 +1,4 @@
-# Cybersecurity-Project-of-Cloud-Storage
+# Cybersecurity Project of Cloud Storage
 
 University project for the *Foundations of Cybersecurity* course (MSc Computer Engineering) by Fabrizio Lanzillo, Federico Montini e Niko Salamini.
 
